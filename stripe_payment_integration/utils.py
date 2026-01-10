@@ -220,15 +220,10 @@ def get_or_create_stripe_customer(doc, customer, stripe):
             
             # Save to ERPNext Customer if exists
             if customer:
-                try:
-                    frappe.lock_doc('Customer', customer.name)
-                    # Re-fetch to get latest
-                    customer.reload()
-                    if not customer.stripe_customer_id:
-                        customer.stripe_customer_id = stripe_customer_id
-                        customer.save(ignore_permissions=True)
-                finally:
-                    frappe.unlock_doc('Customer', customer.name)
+                customer.reload()
+                if not customer.stripe_customer_id:
+                    customer.stripe_customer_id = stripe_customer_id
+                    customer.save(ignore_permissions=True)
             
             return stripe_customer_id
     except Exception as e:
@@ -236,36 +231,28 @@ def get_or_create_stripe_customer(doc, customer, stripe):
     
     # Create new Stripe customer
     try:
+        # Re-check if customer was created by concurrent request
         if customer:
-            frappe.lock_doc('Customer', customer.name)
-        
-        try:
-            # Re-check if customer was created by concurrent request
-            if customer:
-                customer.reload()
-                if customer.stripe_customer_id:
-                    return customer.stripe_customer_id
-            
-            # Create new Stripe customer
-            stripe_customer = stripe.Customer.create(
-                email=customer_email,
-                name=customer_name,
-                metadata={
-                    'erpnext_customer': customer.name if customer else '',
-                    'erpnext_party_name': doc.party_name or ''
-                }
-            )
-            
-            # Save Stripe Customer ID to ERPNext
-            if customer:
-                customer.stripe_customer_id = stripe_customer.id
-                customer.save(ignore_permissions=True)
-            
-            return stripe_customer.id
-            
-        finally:
-            if customer:
-                frappe.unlock_doc('Customer', customer.name)
+            customer.reload()
+            if customer.stripe_customer_id:
+                return customer.stripe_customer_id
+
+        # Create new Stripe customer
+        stripe_customer = stripe.Customer.create(
+            email=customer_email,
+            name=customer_name,
+            metadata={
+                'erpnext_customer': customer.name if customer else '',
+                'erpnext_party_name': doc.party_name or ''
+            }
+        )
+
+        # Save Stripe Customer ID to ERPNext
+        if customer:
+            customer.stripe_customer_id = stripe_customer.id
+            customer.save(ignore_permissions=True)
+
+        return stripe_customer.id
                 
     except Exception as e:
         frappe.log_error(f"Error creating Stripe customer: {str(e)}", "Stripe Integration Error")
