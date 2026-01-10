@@ -48,17 +48,6 @@
             "label": "Configuration"
         },
         {
-            "fieldname": "enable_automatic_checkout",
-            "fieldtype": "Check",
-            "label": "Enable Automatic Checkout",
-            "default": 1,
-            "description": "Automatically create Stripe Invoice when Payment Request is saved"
-        },
-        {
-            "fieldname": "column_break_2",
-            "fieldtype": "Column Break"
-        },
-        {
             "fieldname": "success_url",
             "fieldtype": "Data",
             "label": "Success Redirect URL",
@@ -71,6 +60,17 @@
             "label": "Cancel Redirect URL",
             "default": "/",
             "description": "URL to redirect if payment is cancelled"
+        },
+        {
+            "fieldname": "column_break_2",
+            "fieldtype": "Column Break"
+        },
+        {
+            "fieldname": "enable_automatic_checkout",
+            "fieldtype": "Check",
+            "label": "Enable Automatic Checkout",
+            "default": 1,
+            "description": "Automatically create Stripe Invoice when Payment Request is saved"
         },
         {
             "fieldname": "wire_transfer_section",
