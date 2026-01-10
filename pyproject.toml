@@ -1,0 +1,19 @@
+[project]
+name = "stripe_payment_integration"
+authors = [
+    { name = "Alumicraft", email = "hello@example.com"}
+]
+description = "ERPNext Stripe Invoicing Integration with persistent payment links"
+requires-python = ">=3.10"
+readme = "README.md"
+dynamic = ["version"]
+dependencies = [
+    "stripe>=5.0.0"
+]
+
+[build-system]
+requires = ["flit_core >=3.4,<4"]
+build-backend = "flit_core.buildapi"
+
+[tool.bench]
+is-frappe-app = true
