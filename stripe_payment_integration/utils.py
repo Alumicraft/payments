@@ -297,17 +297,21 @@ def get_customer_country(customer):
 
 
 def get_days_until_due(doc):
-    """Get payment terms days from Payment Request."""
+    """Get payment terms days from Payment Request's referenced document."""
     # Default to 30 days
     default_days = 30
-    
-    if doc.payment_terms_template:
-        # Get days from payment terms
-        terms = frappe.get_doc("Payment Terms Template", doc.payment_terms_template)
-        if terms.terms:
-            # Use first term's due days
-            return terms.terms[0].credit_days or default_days
-    
+
+    # Get payment terms from the referenced document (e.g., Sales Invoice)
+    if doc.reference_doctype and doc.reference_name:
+        try:
+            ref_doc = frappe.get_doc(doc.reference_doctype, doc.reference_name)
+            if hasattr(ref_doc, 'payment_terms_template') and ref_doc.payment_terms_template:
+                terms = frappe.get_doc("Payment Terms Template", ref_doc.payment_terms_template)
+                if terms.terms:
+                    return terms.terms[0].credit_days or default_days
+        except Exception:
+            pass
+
     return default_days
 
 
