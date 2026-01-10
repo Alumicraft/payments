@@ -1,0 +1,106 @@
+{
+    "name": "Stripe Webhook Event",
+    "module": "Stripe Integration",
+    "doctype": "DocType",
+    "autoname": "field:event_id",
+    "editable_grid": 1,
+    "track_changes": 0,
+    "engine": "InnoDB",
+    "fields": [
+        {
+            "fieldname": "event_id",
+            "fieldtype": "Data",
+            "label": "Event ID",
+            "reqd": 1,
+            "unique": 1,
+            "in_list_view": 1,
+            "description": "Stripe Event ID (e.g., evt_...)"
+        },
+        {
+            "fieldname": "event_type",
+            "fieldtype": "Data",
+            "label": "Event Type",
+            "reqd": 1,
+            "in_list_view": 1,
+            "description": "Stripe event type (e.g., invoice.paid)"
+        },
+        {
+            "fieldname": "column_break_1",
+            "fieldtype": "Column Break"
+        },
+        {
+            "fieldname": "processed_at",
+            "fieldtype": "Datetime",
+            "label": "Processed At",
+            "reqd": 1,
+            "in_list_view": 1
+        },
+        {
+            "fieldname": "status",
+            "fieldtype": "Select",
+            "label": "Status",
+            "options": "Success\nFailed",
+            "default": "Success",
+            "in_list_view": 1
+        },
+        {
+            "fieldname": "details_section",
+            "fieldtype": "Section Break",
+            "label": "Details"
+        },
+        {
+            "fieldname": "payment_request",
+            "fieldtype": "Link",
+            "label": "Payment Request",
+            "options": "Payment Request"
+        },
+        {
+            "fieldname": "stripe_invoice_id",
+            "fieldtype": "Data",
+            "label": "Stripe Invoice ID"
+        },
+        {
+            "fieldname": "column_break_2",
+            "fieldtype": "Column Break"
+        },
+        {
+            "fieldname": "amount",
+            "fieldtype": "Currency",
+            "label": "Amount"
+        },
+        {
+            "fieldname": "currency",
+            "fieldtype": "Data",
+            "label": "Currency"
+        },
+        {
+            "fieldname": "error_section",
+            "fieldtype": "Section Break",
+            "label": "Error Details",
+            "collapsible": 1,
+            "depends_on": "eval:doc.status=='Failed'"
+        },
+        {
+            "fieldname": "error_message",
+            "fieldtype": "Small Text",
+            "label": "Error Message"
+        },
+        {
+            "fieldname": "raw_payload",
+            "fieldtype": "Code",
+            "label": "Raw Payload",
+            "options": "JSON"
+        }
+    ],
+    "permissions": [
+        {
+            "role": "System Manager",
+            "read": 1,
+            "write": 1,
+            "create": 1,
+            "delete": 1
+        }
+    ],
+    "sort_field": "processed_at",
+    "sort_order": "DESC"
+}
