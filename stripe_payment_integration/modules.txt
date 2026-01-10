@@ -1,1 +1,1 @@
-stripe_payment_integration
+Stripe Integration
