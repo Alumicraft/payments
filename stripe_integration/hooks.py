@@ -1,4 +1,4 @@
-app_name = "stripe_payment_integration"
+app_name = "stripe_integration"
 app_title = "Stripe Payment Integration"
 app_publisher = "Your Company"
 app_description = "ERPNext Stripe Invoicing Integration with persistent payment links"
@@ -28,8 +28,8 @@ fixtures = [
 # Document Events
 doc_events = {
     "Payment Request": {
-        "after_insert": "stripe_payment_integration.stripe_integration.create_stripe_invoice",
-        "on_update": "stripe_payment_integration.stripe_integration.handle_payment_request_update"
+        "after_insert": "stripe_integration.stripe_integration.create_stripe_invoice",
+        "on_update": "stripe_integration.stripe_integration.handle_payment_request_update"
     }
 }
 
@@ -39,29 +39,29 @@ doctype_js = {
 }
 
 # Include CSS
-# app_include_css = "/assets/stripe_payment_integration/css/stripe.css"
+# app_include_css = "/assets/stripe_integration/css/stripe.css"
 
 # Include JS
-# app_include_js = "/assets/stripe_payment_integration/js/stripe.js"
+# app_include_js = "/assets/stripe_integration/js/stripe.js"
 
 # Scheduled Tasks
 scheduler_events = {
     # Uncomment if you need periodic tasks
     # "daily": [
-    #     "stripe_payment_integration.tasks.daily_sync"
+    #     "stripe_integration.tasks.daily_sync"
     # ],
 }
 
 # Jinja filters
 # jinja = {
 #     "methods": [
-#         "stripe_payment_integration.utils.jinja_methods"
+#         "stripe_integration.utils.jinja_methods"
 #     ]
 # }
 
 # Installation
-after_install = "stripe_payment_integration.install.after_install"
-before_uninstall = "stripe_payment_integration.install.before_uninstall"
+after_install = "stripe_integration.install.after_install"
+before_uninstall = "stripe_integration.install.before_uninstall"
 
 # Override default routes
 # override_routes = {}

@@ -4,15 +4,15 @@ include *.json
 include *.md
 include *.py
 include *.txt
-recursive-include stripe_payment_integration *.css
-recursive-include stripe_payment_integration *.csv
-recursive-include stripe_payment_integration *.html
-recursive-include stripe_payment_integration *.ico
-recursive-include stripe_payment_integration *.js
-recursive-include stripe_payment_integration *.json
-recursive-include stripe_payment_integration *.md
-recursive-include stripe_payment_integration *.png
-recursive-include stripe_payment_integration *.py
-recursive-include stripe_payment_integration *.svg
-recursive-include stripe_payment_integration *.txt
-recursive-exclude stripe_payment_integration *.pyc
+recursive-include stripe_integration *.css
+recursive-include stripe_integration *.csv
+recursive-include stripe_integration *.html
+recursive-include stripe_integration *.ico
+recursive-include stripe_integration *.js
+recursive-include stripe_integration *.json
+recursive-include stripe_integration *.md
+recursive-include stripe_integration *.png
+recursive-include stripe_integration *.py
+recursive-include stripe_integration *.svg
+recursive-include stripe_integration *.txt
+recursive-exclude stripe_integration *.pyc
