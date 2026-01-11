@@ -1,4 +1,4 @@
-app_name = "payments"
+app_name = "stripe_payment_integration"
 app_title = "Payments"
 app_publisher = "Your Company"
 app_description = "ERPNext Stripe Invoicing Integration with persistent payment links"
