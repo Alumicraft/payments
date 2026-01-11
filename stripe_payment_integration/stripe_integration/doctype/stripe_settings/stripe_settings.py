@@ -17,7 +17,17 @@ class StripeSettings(Document):
         # Auto-detect test mode
         if self.api_key:
             self.test_mode = self.api_key.startswith("sk_test_")
-    
+
+    def validate_transaction_currency(self, currency):
+        """Validate transaction currency."""
+        pass  # Stripe supports most currencies, so we allow all
+    def get_payment_url(self, **kwargs):
+        """Get payment URL."""
+        order_id = kwargs.get('order_id')
+        if order_id:
+            return frappe.db.get_value("Payment Request", order_id, "stripe_invoice_url")
+        return None
+        
     @staticmethod
     def get_stripe_settings():
         """Get Stripe Settings singleton."""
