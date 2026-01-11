@@ -172,9 +172,12 @@ def _create_stripe_invoice_internal(doc):
         doc.stripe_invoice_id = finalized_invoice.id
         doc.stripe_payment_status = "Pending"
         
-        # Save without triggering hooks again
-        doc.flags.ignore_validate_update_after_submit = True
-        doc.save(ignore_permissions=True)
+        # Update DB without triggering hooks/save recursion
+        doc.db_set({
+            'stripe_invoice_url': doc.stripe_invoice_url,
+            'stripe_invoice_id': doc.stripe_invoice_id,
+            'stripe_payment_status': doc.stripe_payment_status 
+        })
         
         # Record rate limit timestamp
         set_rate_limit_timestamp(doc.name)
