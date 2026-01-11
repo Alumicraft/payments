@@ -1,5 +1,5 @@
 [project]
-name = "stripe_payment_integration"
+name = "payments"
 authors = [
     { name = "Alumicraft", email = "hello@example.com"}
 ]
