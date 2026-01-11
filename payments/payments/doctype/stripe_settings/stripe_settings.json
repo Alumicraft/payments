@@ -97,6 +97,43 @@
             "fieldname": "swift_code",
             "fieldtype": "Data",
             "label": "SWIFT Code"
+        },
+        {
+            "fieldname": "accounting_section",
+            "fieldtype": "Section Break",
+            "label": "Accounting Configuration"
+        },
+        {
+            "fieldname": "clearing_account",
+            "fieldtype": "Link",
+            "label": "Stripe Clearing Account",
+            "options": "Account",
+            "description": "Temporary clearing account for Stripe transactions (e.g., 'Stripe - Clearing')"
+        },
+        {
+            "fieldname": "fee_expense_account",
+            "fieldtype": "Link",
+            "label": "Stripe Fee Expense Account",
+            "options": "Account",
+            "description": "Expense account for Stripe processing fees"
+        },
+        {
+            "fieldname": "column_break_accounting",
+            "fieldtype": "Column Break"
+        },
+        {
+            "fieldname": "card_fee_income_account",
+            "fieldtype": "Link",
+            "label": "Card Fee Income Account",
+            "options": "Account",
+            "description": "Income account for customer-paid card processing fees (3% surcharge)"
+        },
+        {
+            "fieldname": "stripe_bank_account",
+            "fieldtype": "Link",
+            "label": "Stripe Bank Account",
+            "options": "Account",
+            "description": "Your Stripe balance/payout account"
         }
     ],
     "permissions": [

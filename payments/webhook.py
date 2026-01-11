@@ -175,43 +175,80 @@ def process_event(event, event_type):
 def handle_invoice_paid(event):
     """
     Handle invoice.paid event.
-    Creates Payment Entry in ERPNext.
-    
+    Creates Payment Entry in ERPNext and records Stripe fees.
+
     Args:
         event: Stripe event object
-    
+
     Returns:
         dict: Processing result
     """
+    import stripe
+
     invoice = event.get('data', {}).get('object', {})
     invoice_id = invoice.get('id')
-    
+
     # Find Payment Request
     payment_request_name = find_payment_request(invoice)
     if not payment_request_name:
         return {"message": f"No Payment Request found for invoice {invoice_id}"}
-    
+
     payment_request = frappe.get_doc("Payment Request", payment_request_name)
-    
+
     # Check if already marked as paid
     if payment_request.stripe_payment_status == "Paid":
         return {"message": f"Payment Request {payment_request_name} already marked as paid"}
-    
+
     # Update Payment Request status
     payment_request.stripe_payment_status = "Paid"
     payment_request.stripe_payment_intent_id = invoice.get('payment_intent')
     payment_request.save(ignore_permissions=True)
-    
+
     # Create Payment Entry
+    result = {
+        "message": "Payment recorded successfully",
+        "payment_request": payment_request_name
+    }
+
     try:
         payment_entry = create_payment_entry(payment_request, invoice)
+        result["payment_entry"] = payment_entry.name if payment_entry else None
+
+        # Fetch Stripe fee from charge/balance transaction
+        stripe_fee = 0
+        charge_id = invoice.get('charge')
+
+        if charge_id:
+            try:
+                settings = frappe.get_single("Stripe Settings")
+                stripe.api_key = settings.get_password("api_key")
+
+                charge = stripe.Charge.retrieve(charge_id)
+                if charge.balance_transaction:
+                    balance_txn = stripe.BalanceTransaction.retrieve(charge.balance_transaction)
+                    stripe_fee = balance_txn.fee / 100  # Convert cents to dollars
+            except Exception as e:
+                frappe.log_error(f"Failed to fetch Stripe fee: {str(e)}", "Stripe Webhook")
+
+        # Record Stripe fee as expense (if fee > 0 and accounts configured)
+        if stripe_fee > 0:
+            try:
+                fee_entry = record_stripe_fee(payment_request, stripe_fee, invoice_id)
+                result["fee_journal_entry"] = fee_entry
+            except Exception as e:
+                frappe.log_error(f"Failed to record Stripe fee: {str(e)}", "Stripe Webhook Error")
+
+        # Record card fee income if customer paid surcharge
+        if payment_request.allow_card_payment and payment_request.card_processing_fee:
+            try:
+                income_entry = record_card_fee_income(payment_request, payment_request.card_processing_fee, invoice_id)
+                result["card_fee_journal_entry"] = income_entry
+            except Exception as e:
+                frappe.log_error(f"Failed to record card fee income: {str(e)}", "Stripe Webhook Error")
+
         frappe.db.commit()
-        
-        return {
-            "message": "Payment recorded successfully",
-            "payment_request": payment_request_name,
-            "payment_entry": payment_entry.name if payment_entry else None
-        }
+        return result
+
     except Exception as e:
         frappe.log_error(
             f"Failed to create Payment Entry for {payment_request_name}: {str(e)}",
@@ -413,20 +450,24 @@ def create_payment_entry(payment_request, invoice):
     if not company:
         frappe.throw(_("Company not found for Payment Entry"))
     
-    # Get payment accounts
+    # Get payment accounts - prefer clearing account from Stripe Settings
+    settings = frappe.get_single("Stripe Settings")
+    payment_account = settings.clearing_account if settings.clearing_account else None
+
     mode_of_payment = "Stripe"
-    
+
     # Check if Stripe mode of payment exists, if not use Bank
     if not frappe.db.exists("Mode of Payment", "Stripe"):
         mode_of_payment = "Bank Draft"  # Fallback
-    
-    # Get account from Mode of Payment Account
-    payment_account = frappe.db.get_value(
-        "Mode of Payment Account",
-        {"parent": mode_of_payment, "company": company},
-        "default_account"
-    )
-    
+
+    # Fallback to Mode of Payment Account if clearing account not set
+    if not payment_account:
+        payment_account = frappe.db.get_value(
+            "Mode of Payment Account",
+            {"parent": mode_of_payment, "company": company},
+            "default_account"
+        )
+
     if not payment_account:
         # Try to get default bank account
         payment_account = frappe.db.get_value(
@@ -434,10 +475,10 @@ def create_payment_entry(payment_request, invoice):
             company,
             "default_bank_account"
         )
-    
+
     if not payment_account:
         frappe.log_error(
-            f"No payment account found for company {company}",
+            f"No payment account found for company {company}. Configure 'Clearing Account' in Stripe Settings.",
             "Stripe Webhook Error"
         )
         return None
@@ -495,7 +536,7 @@ def get_receivable_account(company):
         company,
         "default_receivable_account"
     )
-    
+
     if not account:
         # Try to find any receivable account
         account = frappe.db.get_value(
@@ -503,5 +544,138 @@ def get_receivable_account(company):
             {"company": company, "account_type": "Receivable", "is_group": 0},
             "name"
         )
-    
+
     return account
+
+
+def record_stripe_fee(payment_request, fee_amount, stripe_invoice_id):
+    """
+    Record Stripe processing fee as an expense via Journal Entry.
+
+    Debit: Stripe Fee Expense Account
+    Credit: Stripe Clearing Account
+
+    Args:
+        payment_request: Payment Request document
+        fee_amount: Fee amount in dollars
+        stripe_invoice_id: Stripe invoice ID for reference
+
+    Returns:
+        str: Journal Entry name or None
+    """
+    settings = frappe.get_single("Stripe Settings")
+
+    # Check if accounts are configured
+    if not settings.fee_expense_account or not settings.clearing_account:
+        frappe.log_error(
+            "Stripe fee accounts not configured in Stripe Settings",
+            "Stripe Webhook"
+        )
+        return None
+
+    # Get company from Payment Request
+    company = payment_request.company or frappe.defaults.get_user_default("Company")
+
+    if not company:
+        frappe.log_error("No company found for Stripe fee entry", "Stripe Webhook Error")
+        return None
+
+    # Create Journal Entry for fee
+    je = frappe.new_doc("Journal Entry")
+    je.voucher_type = "Journal Entry"
+    je.company = company
+    je.posting_date = frappe.utils.today()
+    je.user_remark = f"Stripe processing fee for invoice {stripe_invoice_id}"
+
+    # Debit: Stripe Fee Expense Account
+    je.append("accounts", {
+        "account": settings.fee_expense_account,
+        "debit_in_account_currency": fee_amount,
+        "credit_in_account_currency": 0,
+        "user_remark": f"Stripe fee for {payment_request.reference_name or payment_request.name}"
+    })
+
+    # Credit: Stripe Clearing Account
+    je.append("accounts", {
+        "account": settings.clearing_account,
+        "debit_in_account_currency": 0,
+        "credit_in_account_currency": fee_amount,
+        "user_remark": f"Stripe fee deduction"
+    })
+
+    je.insert(ignore_permissions=True)
+    je.submit()
+
+    frappe.log_error(
+        f"Created Stripe fee Journal Entry {je.name} for ${fee_amount}",
+        "Stripe Webhook"
+    )
+
+    return je.name
+
+
+def record_card_fee_income(payment_request, fee_amount, stripe_invoice_id):
+    """
+    Record credit card processing fee collected from customer as income.
+
+    This uses a simple Journal Entry approach:
+    Debit: Stripe Clearing Account (already received this from customer)
+    Credit: Card Fee Income Account
+
+    Args:
+        payment_request: Payment Request document
+        fee_amount: Card fee amount in dollars
+        stripe_invoice_id: Stripe invoice ID for reference
+
+    Returns:
+        str: Journal Entry name or None
+    """
+    settings = frappe.get_single("Stripe Settings")
+
+    # Check if accounts are configured
+    if not settings.card_fee_income_account or not settings.clearing_account:
+        frappe.log_error(
+            "Card fee income accounts not configured in Stripe Settings",
+            "Stripe Webhook"
+        )
+        return None
+
+    # Get company from Payment Request
+    company = payment_request.company or frappe.defaults.get_user_default("Company")
+
+    if not company:
+        frappe.log_error("No company found for card fee income entry", "Stripe Webhook Error")
+        return None
+
+    # Create Journal Entry for card fee income
+    je = frappe.new_doc("Journal Entry")
+    je.voucher_type = "Journal Entry"
+    je.company = company
+    je.posting_date = frappe.utils.today()
+    je.user_remark = f"Card processing fee income for invoice {stripe_invoice_id}"
+
+    # Debit: Stripe Clearing Account (we received this extra amount)
+    je.append("accounts", {
+        "account": settings.clearing_account,
+        "debit_in_account_currency": fee_amount,
+        "credit_in_account_currency": 0,
+        "user_remark": f"Card fee received from customer"
+    })
+
+    # Credit: Card Fee Income Account
+    je.append("accounts", {
+        "account": settings.card_fee_income_account,
+        "debit_in_account_currency": 0,
+        "credit_in_account_currency": fee_amount,
+        "user_remark": f"Card processing fee income for {payment_request.reference_name or payment_request.name}"
+    })
+
+    je.insert(ignore_permissions=True)
+    je.submit()
+
+    frappe.log_error(
+        f"Created card fee income Journal Entry {je.name} for ${fee_amount}",
+        "Stripe Webhook"
+    )
+
+    return je.name
