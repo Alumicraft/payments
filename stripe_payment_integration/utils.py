@@ -323,7 +323,19 @@ def get_due_date_timestamp(doc):
             
     # Calculate timestamp
     if due_date:
-        return int(get_datetime(due_date).timestamp())
+        dt = get_datetime(due_date)
+        
+        # If midnight (just a date), set to end of day
+        if dt.hour == 0 and dt.minute == 0 and dt.second == 0:
+            dt = dt.replace(hour=23, minute=59, second=59)
+            
+        # Stripe requires due_date to be in the future
+        # If due date is in the past, set to tomorrow
+        if dt <= now_datetime():
+            from frappe.utils import add_days
+            return int(get_datetime(add_days(now_datetime(), 1)).timestamp())
+            
+        return int(dt.timestamp())
         
     # Default: 30 days from now
     from frappe.utils import add_days

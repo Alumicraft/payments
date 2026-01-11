@@ -23,7 +23,7 @@ def create_custom_fields():
         "Payment Request": [
             {
                 "fieldname": "stripe_section",
-                "label": "Stripe Integration",
+                "label": "Payment Settings",
                 "fieldtype": "Section Break",
                 "insert_after": "payment_url",
                 "collapsible": 1
@@ -65,7 +65,7 @@ def create_custom_fields():
             },
             {
                 "fieldname": "allow_card_payment",
-                "label": "Allow Card Payment (+ 3% fee)",
+                "label": "Allow Card Payment (+3% fee)",
                 "fieldtype": "Check",
                 "default": 0,
                 "insert_after": "stripe_column_break",
