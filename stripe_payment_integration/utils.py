@@ -14,7 +14,7 @@ RATE_LIMIT_SECONDS = 5
 def create_stripe_invoice(doc, method=None):
     """
     Create a Stripe Invoice for a Payment Request.
-    Triggered by after_insert hook on Payment Request.
+    Triggered by on_submit hook on Payment Request.
     
     Args:
         doc: Payment Request document
@@ -137,12 +137,13 @@ def _create_stripe_invoice_internal(doc):
         invoice = stripe.Invoice.create(
             customer=stripe_customer_id,
             collection_method='send_invoice',
-            days_until_due=get_days_until_due(doc),
+            due_date=get_due_date_timestamp(doc),
             auto_advance=False,  # Don't auto-finalize
             footer=footer_text,
             metadata={
                 'erpnext_payment_request': doc.name,
                 'erpnext_customer': customer.name if customer else '',
+                'erpnext_invoice_number': doc.reference_name or '',
                 'allow_card_payment': '1' if allow_card else '0'
             },
             payment_settings={
@@ -159,7 +160,8 @@ def _create_stripe_invoice_internal(doc):
             invoice=invoice.id,
             amount=int(base_amount * 100),  # Convert to cents
             currency=doc.currency.lower() if doc.currency else 'usd',
-            description=description
+            description=f"Payment for {doc.reference_name}" if doc.reference_name else description,
+            metadata={'erpnext_invoice_number': doc.reference_name or ''}
         )
         
         # Finalize invoice to generate hosted URL
@@ -296,23 +298,36 @@ def get_customer_country(customer):
     return customer.territory if customer.territory else "US"
 
 
-def get_days_until_due(doc):
-    """Get payment terms days from Payment Request's referenced document."""
-    # Default to 30 days
-    default_days = 30
-
-    # Get payment terms from the referenced document (e.g., Sales Invoice)
-    if doc.reference_doctype and doc.reference_name:
+def get_due_date_timestamp(doc):
+    """
+    Get due date timestamp for Stripe Invoice.
+    Prioritizes Payment Request due date, then Reference Document due date, then default 30 days.
+    """
+    due_date = None
+    
+    # 1. Try Payment Request due date (if exists)
+    if hasattr(doc, 'payment_due_date') and doc.payment_due_date:
+        due_date = doc.payment_due_date
+        
+    # 2. Try Reference Document due date
+    elif doc.reference_doctype and doc.reference_name:
         try:
-            ref_doc = frappe.get_doc(doc.reference_doctype, doc.reference_name)
-            if hasattr(ref_doc, 'payment_terms_template') and ref_doc.payment_terms_template:
-                terms = frappe.get_doc("Payment Terms Template", ref_doc.payment_terms_template)
-                if terms.terms:
-                    return terms.terms[0].credit_days or default_days
+            # Common field names for due date
+            for field in ['due_date', 'payment_due_date', 'bill_date']:
+                val = frappe.db.get_value(doc.reference_doctype, doc.reference_name, field)
+                if val:
+                    due_date = val
+                    break
         except Exception:
             pass
-
-    return default_days
+            
+    # Calculate timestamp
+    if due_date:
+        return int(get_datetime(due_date).timestamp())
+        
+    # Default: 30 days from now
+    from frappe.utils import add_days
+    return int(get_datetime(add_days(now_datetime(), 30)).timestamp())
 
 
 def get_invoice_description(doc):
@@ -380,7 +395,7 @@ def is_rate_limited(payment_request_name):
 def set_rate_limit_timestamp(payment_request_name):
     """Set rate limit timestamp for payment request."""
     cache_key = f"stripe_invoice_created_{payment_request_name}"
-    frappe.cache().set_value(cache_key, now_datetime(), expires_in_sec=RATE_LIMIT_SECONDS * 2)
+    frappe.cache().set_value(cache_key, now_datetime(), expires_in_sec=RATE_LIMIT_SECONDS * 2) 
 
 
 @frappe.whitelist()

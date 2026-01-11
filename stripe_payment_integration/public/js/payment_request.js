@@ -93,10 +93,7 @@ frappe.ui.form.on('Payment Request', {
         // Update payment status indicator
         update_status_indicator(frm);
 
-        // Show pricing info if card payment is enabled
-        if (frm.doc.allow_card_payment && frm.doc.grand_total) {
-            show_pricing_info(frm);
-        }
+
     },
 
     allow_card_payment: function (frm) {
@@ -131,7 +128,7 @@ function calculate_card_fees(frm) {
         frm.set_value('card_processing_fee', card_fee);
         frm.set_value('total_with_card_fee', total_with_fee);
 
-        show_pricing_info(frm);
+
     } else {
         frm.set_value('card_processing_fee', 0);
         frm.set_value('total_with_card_fee', 0);
@@ -139,39 +136,7 @@ function calculate_card_fees(frm) {
 }
 
 
-/**
- * Show pricing comparison info in dashboard
- */
-function show_pricing_info(frm) {
-    // Clear existing comments
-    frm.dashboard.clear_comment();
 
-    if (frm.doc.allow_card_payment && frm.doc.grand_total) {
-        const base_amount = frm.doc.grand_total;
-        const card_fee = frm.doc.card_processing_fee || (base_amount * 0.03);
-        const total_with_fee = frm.doc.total_with_card_fee || (base_amount + card_fee);
-
-        const currency = frm.doc.currency || 'USD';
-
-        frm.dashboard.add_comment(
-            `<div style="padding: 10px; background: #f0f4f7; border-radius: 5px; margin-bottom: 10px;">
-                <strong>💳 Payment Options for Customer:</strong><br>
-                <div style="margin-top: 5px;">
-                    <span style="color: #28a745;">✓ ACH Direct Debit:</span> 
-                    <strong>${format_currency(base_amount, currency)}</strong> 
-                    <span style="color: #666; font-size: 11px;">(Recommended - saves 3%!)</span>
-                </div>
-                <div style="margin-top: 3px;">
-                    <span style="color: #17a2b8;">✓ Card Payment:</span> 
-                    <strong>${format_currency(total_with_fee, currency)}</strong>
-                    <span style="color: #666; font-size: 11px;">(includes ${format_currency(card_fee, currency)} processing fee)</span>
-                </div>
-            </div>`,
-            'blue',
-            true
-        );
-    }
-}
 
 
 /**

@@ -28,7 +28,7 @@ fixtures = [
 # Document Events
 doc_events = {
     "Payment Request": {
-        "after_insert": "stripe_payment_integration.utils.create_stripe_invoice",
+        "on_submit": "stripe_payment_integration.utils.create_stripe_invoice",
         "on_update": "stripe_payment_integration.utils.handle_payment_request_update"
     }
 }
