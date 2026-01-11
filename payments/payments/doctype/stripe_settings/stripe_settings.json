@@ -1,6 +1,6 @@
 {
     "name": "Stripe Settings",
-    "module": "Stripe",
+    "module": "Payments",
     "doctype": "DocType",
     "issingle": 1,
     "editable_grid": 1,

@@ -1,5 +1,5 @@
 {
-    "module_name": "Stripe",
+    "module_name": "Payments",
     "category": "Modules",
     "type": "module"
 }
