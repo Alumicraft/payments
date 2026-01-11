@@ -1,6 +1,6 @@
 {
     "name": "Stripe Webhook Event",
-    "module": "Stripe Integration",
+    "module": "Stripe",
     "doctype": "DocType",
     "autoname": "field:event_id",
     "editable_grid": 1,

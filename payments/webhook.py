@@ -18,7 +18,7 @@ def handle_stripe_webhook():
     Endpoint: /api/method/payments.webhook.handle_stripe_webhook
     """
     from payments.utils import get_gateway_controller
-    from payments.stripe_integration.doctype.stripe_webhook_event.stripe_webhook_event import (
+    from payments.stripe.doctype.stripe_webhook_event.stripe_webhook_event import (
         create_stripe_webhook_event,
     )
     import stripe
