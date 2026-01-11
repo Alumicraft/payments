@@ -1,4 +1,4 @@
-# Stripe Payment Integration for ERPNext
+# Payments for ERPNext
 
 A custom Frappe app that integrates Stripe Invoicing for payment collection with persistent payment links, optimal pricing for low-volume businesses (≤25 invoices/month FREE), and support for Net 30/60 payment terms.
 
@@ -18,15 +18,15 @@ A custom Frappe app that integrates Stripe Invoicing for payment collection with
 1. Log into Frappe Cloud dashboard
 2. Navigate to your site → Apps → Install App
 3. Choose "Install from GitHub"
-4. Enter repository URL: `https://github.com/your-org/stripe_payment_integration`
+4. Enter repository URL: `https://github.com/Alumicraft/payments`
 5. Select branch/tag and click Install
 
 ### Local Development
 
 ```bash
 cd frappe-bench
-bench get-app https://github.com/your-org/stripe_payment_integration
-bench --site your-site.local install-app stripe_payment_integration
+bench get-app https://github.com/Alumicraft/payments
+bench --site your-site.local install-app payments
 bench migrate
 ```
 
@@ -51,7 +51,7 @@ bench migrate
 2. Click "Add endpoint"
 3. Enter endpoint URL:
    ```
-   https://your-site.frappe.cloud/api/method/stripe_payment_integration.webhook.handle_stripe_webhook
+   https://your-site.frappe.cloud/api/method/payments.webhook.handle_stripe_webhook
    ```
 4. Select events:
    - `invoice.paid`

@@ -4,8 +4,8 @@ include *.json
 include *.md
 include *.py
 include *.txt
-recursive-include stripe_payment_integration *.json
-recursive-include stripe_payment_integration *.py
+recursive-include payments *.json
+recursive-include payments *.py
 recursive-include public *.js
 recursive-include public *.css
 recursive-include public *.png

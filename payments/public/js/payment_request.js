@@ -33,7 +33,7 @@ frappe.ui.form.on('Payment Request', {
                         __('This will void the current invoice and create a new one. The customer will receive a new payment link. Continue?'),
                         function () {
                             frappe.call({
-                                method: 'stripe_payment_integration.utils.regenerate_stripe_invoice',
+                                method: 'payments.utils.regenerate_stripe_invoice',
                                 args: {
                                     payment_request_name: frm.doc.name
                                 },
@@ -57,7 +57,7 @@ frappe.ui.form.on('Payment Request', {
             // Refresh status from Stripe
             frm.add_custom_button(__('Refresh Status'), function () {
                 frappe.call({
-                    method: 'stripe_payment_integration.utils.get_stripe_invoice_status',
+                    method: 'payments.utils.get_stripe_invoice_status',
                     args: {
                         payment_request_name: frm.doc.name
                     },

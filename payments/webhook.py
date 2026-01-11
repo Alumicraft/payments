@@ -15,10 +15,10 @@ def handle_stripe_webhook():
     This endpoint receives webhook events from Stripe and processes them accordingly.
     It verifies the webhook signature, checks for idempotency, and processes the event.
     
-    Endpoint: /api/method/stripe_payment_integration.webhook.handle_stripe_webhook
+    Endpoint: /api/method/payments.webhook.handle_stripe_webhook
     """
-    from stripe_payment_integration.stripe_payment_integration.utils import get_gateway_controller
-    from stripe_payment_integration.stripe_payment_integration.stripe_integration.doctype.stripe_webhook_event.stripe_webhook_event import (
+    from payments.utils import get_gateway_controller
+    from payments.stripe_integration.doctype.stripe_webhook_event.stripe_webhook_event import (
         create_stripe_webhook_event,
     )
     import stripe
