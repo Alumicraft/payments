@@ -15,7 +15,7 @@ def create_stripe_invoice(doc, method=None):
     """
     Create a Stripe Invoice for a Payment Request.
     Triggered by on_submit hook on Payment Request.
-    
+
     Args:
         doc: Payment Request document
         method: Hook method name (unused)
@@ -24,7 +24,7 @@ def create_stripe_invoice(doc, method=None):
     settings = get_stripe_settings()
     if not settings or not settings.enable_automatic_checkout:
         return
-    
+
     # Rate limit check
     if is_rate_limited(doc.name):
         frappe.log_error(
@@ -32,8 +32,20 @@ def create_stripe_invoice(doc, method=None):
             "Stripe Integration"
         )
         return
-    
-    # Check if invoice already exists
+
+    # Check if this is an amended document with stale Stripe data
+    if doc.amended_from and doc.stripe_invoice_id:
+        # Clear stale Stripe fields from the amended document
+        doc.stripe_invoice_id = None
+        doc.stripe_invoice_url = None
+        doc.stripe_payment_status = None
+        doc.stripe_payment_intent_id = None
+        frappe.log_error(
+            f"Cleared stale Stripe data from amended document {doc.name} (amended from {doc.amended_from})",
+            "Stripe Integration"
+        )
+
+    # Check if invoice already exists (for non-amended documents)
     if doc.stripe_invoice_id:
         frappe.log_error(
             f"Invoice already exists for {doc.name}: {doc.stripe_invoice_id}",
