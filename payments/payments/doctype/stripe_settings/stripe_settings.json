@@ -75,8 +75,7 @@
         {
             "fieldname": "wire_transfer_section",
             "fieldtype": "Section Break",
-            "label": "Wire Transfer Details (for International Customers)",
-            "collapsible": 1
+            "label": "Wire Transfer Details (for International Customers)"
         },
         {
             "fieldname": "bank_name",
