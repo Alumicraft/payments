@@ -185,16 +185,28 @@ def _create_stripe_invoice_internal(doc):
         
         # Add line item(s)
         description = get_invoice_description(doc)
-        
-        # For ACH, just add the base amount
+        currency = doc.currency.lower() if doc.currency else 'usd'
+
+        # Add base amount line item
         stripe.InvoiceItem.create(
             customer=stripe_customer_id,
             invoice=invoice.id,
             amount=int(base_amount * 100),  # Convert to cents
-            currency=doc.currency.lower() if doc.currency else 'usd',
+            currency=currency,
             description=f"Payment for {doc.reference_name}" if doc.reference_name else description,
             metadata={'erpnext_invoice_number': doc.reference_name or ''}
         )
+
+        # Add card processing fee as separate line item if card payments enabled
+        if allow_card and doc.card_processing_fee:
+            stripe.InvoiceItem.create(
+                customer=stripe_customer_id,
+                invoice=invoice.id,
+                amount=int(doc.card_processing_fee * 100),  # Convert to cents
+                currency=currency,
+                description="Card Processing Fee (3%)",
+                metadata={'fee_type': 'card_processing_fee'}
+            )
         
         # Finalize invoice to generate hosted URL
         finalized_invoice = stripe.Invoice.finalize_invoice(invoice.id)
