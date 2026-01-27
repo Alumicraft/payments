@@ -35,7 +35,8 @@ doc_events = {
 
 # Include JS in doctype views
 doctype_js = {
-    "Payment Request": "public/js/payment_request.js"
+    "Payment Request": "public/js/payment_request.js",
+    "Loan": "public/js/loan.js"
 }
 
 # Include CSS
@@ -46,10 +47,14 @@ doctype_js = {
 
 # Scheduled Tasks
 scheduler_events = {
-    # Uncomment if you need periodic tasks
-    # "daily": [
-    #     "payments.tasks.daily_sync"
-    # ],
+    "daily": [
+        "payments.tasks.scheduled_debits.process_upcoming_payments",
+        "payments.tasks.scheduled_debits.initiate_scheduled_transactions",
+        "payments.tasks.scheduled_debits.process_retry_transactions"
+    ],
+    "hourly": [
+        "payments.tasks.scheduled_debits.check_pending_transactions"
+    ],
 }
 
 # Jinja filters
