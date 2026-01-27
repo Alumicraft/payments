@@ -54,9 +54,9 @@ function show_autopay_manager(frm) {
             method: 'payments.api.achq_integration.is_plaid_available'
         })
     ]).then(function([accounts_r, loan_r, plaid_r]) {
-        const accounts = accounts_r.message.accounts || [];
-        const loan_account = loan_r.message;
-        const plaid_available = plaid_r.message.available;
+        const accounts = (accounts_r.message && accounts_r.message.accounts) || [];
+        const loan_account = loan_r.message || {};
+        const plaid_available = plaid_r.message && plaid_r.message.available;
 
         show_autopay_dialog(frm, accounts, loan_account, plaid_available);
     });
@@ -228,6 +228,11 @@ function create_plaid_handler(frm, link_token) {
         token: link_token,
         onSuccess: function(public_token, metadata) {
             // User selected an account
+            if (!metadata.accounts || metadata.accounts.length === 0) {
+                frappe.msgprint(__('No account was selected. Please try again.'));
+                show_autopay_manager(frm);
+                return;
+            }
             const account = metadata.accounts[0];
             process_plaid_success(frm, public_token, account.id);
         },

@@ -806,7 +806,7 @@ def process_plaid_callback(public_token, account_id, customer, is_default=True):
                 )
                 inst_response.raise_for_status()
                 bank_name = inst_response.json().get("institution", {}).get("name", "")
-            except:
+            except (requests.RequestException, KeyError, ValueError):
                 pass  # Bank name is optional
 
         # Convert is_default to boolean

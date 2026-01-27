@@ -259,7 +259,7 @@ def process_retry_transactions():
         filters={
             "status": ["in", ["Failed", "Returned"]],
             "next_retry_date": ["<=", today()],
-            "next_retry_date": ["is", "set"]
+            "next_retry_date": ["!=", None]
         },
         fields=["name", "retry_attempt", "max_retries", "ach_authorization"]
     )

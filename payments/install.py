@@ -33,8 +33,7 @@ def create_custom_fields():
                 "label": "Stripe Invoice URL",
                 "fieldtype": "Data",
                 "read_only": 1,
-                "insert_after": "stripe_section",
-                "options": "URL"
+                "insert_after": "stripe_section"
             },
             {
                 "fieldname": "stripe_invoice_id",
