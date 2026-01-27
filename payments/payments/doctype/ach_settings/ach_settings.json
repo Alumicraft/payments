@@ -1,0 +1,243 @@
+{
+ "actions": [],
+ "creation": "2024-01-01 00:00:00.000000",
+ "doctype": "DocType",
+ "editable_grid": 1,
+ "engine": "InnoDB",
+ "field_order": [
+  "enable_ach_autopay",
+  "achq_credentials_section",
+  "achq_environment",
+  "achq_merchant_id",
+  "achq_merchant_gate_id",
+  "achq_merchant_gate_key",
+  "column_break_credentials",
+  "default_check_type",
+  "default_sec_code",
+  "plaid_section",
+  "plaid_environment",
+  "plaid_client_id",
+  "plaid_secret",
+  "verification_section",
+  "use_express_verify",
+  "allow_unknown_accounts",
+  "scheduling_section",
+  "days_before_due_to_initiate",
+  "advance_notification_days",
+  "column_break_scheduling",
+  "max_retry_attempts",
+  "retry_delay_days",
+  "cutoff_time",
+  "notifications_section",
+  "send_upcoming_debit_notification",
+  "send_success_notification",
+  "send_failure_notification"
+ ],
+ "fields": [
+  {
+   "default": "0",
+   "fieldname": "enable_ach_autopay",
+   "fieldtype": "Check",
+   "label": "Enable ACH Autopay",
+   "description": "Master toggle for ACH autopay functionality"
+  },
+  {
+   "fieldname": "achq_credentials_section",
+   "fieldtype": "Section Break",
+   "label": "ACHQ Credentials"
+  },
+  {
+   "default": "Sandbox",
+   "fieldname": "achq_environment",
+   "fieldtype": "Select",
+   "label": "ACHQ Environment",
+   "options": "Sandbox\nProduction",
+   "depends_on": "enable_ach_autopay"
+  },
+  {
+   "fieldname": "achq_merchant_id",
+   "fieldtype": "Data",
+   "label": "Merchant ID",
+   "depends_on": "enable_ach_autopay",
+   "description": "Sandbox: 2001"
+  },
+  {
+   "fieldname": "achq_merchant_gate_id",
+   "fieldtype": "Data",
+   "label": "Merchant Gate ID",
+   "depends_on": "enable_ach_autopay",
+   "description": "Sandbox: test"
+  },
+  {
+   "fieldname": "achq_merchant_gate_key",
+   "fieldtype": "Password",
+   "label": "Merchant Gate Key",
+   "depends_on": "enable_ach_autopay",
+   "description": "Sandbox: test"
+  },
+  {
+   "fieldname": "column_break_credentials",
+   "fieldtype": "Column Break"
+  },
+  {
+   "default": "Personal",
+   "fieldname": "default_check_type",
+   "fieldtype": "Select",
+   "label": "Default Check Type",
+   "options": "Personal\nBusiness",
+   "depends_on": "enable_ach_autopay",
+   "description": "For manual bank account entry"
+  },
+  {
+   "default": "WEB",
+   "fieldname": "default_sec_code",
+   "fieldtype": "Select",
+   "label": "Default SEC Code",
+   "options": "WEB\nPPD\nCCD\nTEL",
+   "depends_on": "enable_ach_autopay"
+  },
+  {
+   "fieldname": "plaid_section",
+   "fieldtype": "Section Break",
+   "label": "Plaid Integration",
+   "description": "Optional - for bank account linking via Plaid"
+  },
+  {
+   "default": "Sandbox",
+   "fieldname": "plaid_environment",
+   "fieldtype": "Select",
+   "label": "Plaid Environment",
+   "options": "Sandbox\nProduction",
+   "depends_on": "enable_ach_autopay"
+  },
+  {
+   "fieldname": "plaid_client_id",
+   "fieldtype": "Data",
+   "label": "Plaid Client ID",
+   "depends_on": "enable_ach_autopay"
+  },
+  {
+   "fieldname": "plaid_secret",
+   "fieldtype": "Password",
+   "label": "Plaid Secret",
+   "depends_on": "enable_ach_autopay"
+  },
+  {
+   "fieldname": "verification_section",
+   "fieldtype": "Section Break",
+   "label": "Verification"
+  },
+  {
+   "default": "1",
+   "fieldname": "use_express_verify",
+   "fieldtype": "Check",
+   "label": "Use Express Verify",
+   "description": "Verify bank accounts before accepting them (for manual entry)",
+   "depends_on": "enable_ach_autopay"
+  },
+  {
+   "default": "1",
+   "fieldname": "allow_unknown_accounts",
+   "fieldtype": "Check",
+   "label": "Allow Unknown Accounts",
+   "description": "Accept accounts with UNK verification status",
+   "depends_on": "enable_ach_autopay"
+  },
+  {
+   "fieldname": "scheduling_section",
+   "fieldtype": "Section Break",
+   "label": "Scheduling"
+  },
+  {
+   "default": "3",
+   "fieldname": "days_before_due_to_initiate",
+   "fieldtype": "Int",
+   "label": "Days Before Due to Initiate",
+   "description": "ACH takes 3-5 business days to process",
+   "depends_on": "enable_ach_autopay"
+  },
+  {
+   "default": "5",
+   "fieldname": "advance_notification_days",
+   "fieldtype": "Int",
+   "label": "Advance Notification Days",
+   "description": "NACHA requires advance notice of debit",
+   "depends_on": "enable_ach_autopay"
+  },
+  {
+   "fieldname": "column_break_scheduling",
+   "fieldtype": "Column Break"
+  },
+  {
+   "default": "2",
+   "fieldname": "max_retry_attempts",
+   "fieldtype": "Int",
+   "label": "Max Retry Attempts",
+   "depends_on": "enable_ach_autopay"
+  },
+  {
+   "default": "3",
+   "fieldname": "retry_delay_days",
+   "fieldtype": "Int",
+   "label": "Retry Delay Days",
+   "depends_on": "enable_ach_autopay"
+  },
+  {
+   "default": "14:00",
+   "fieldname": "cutoff_time",
+   "fieldtype": "Time",
+   "label": "Cutoff Time",
+   "description": "After this time, transactions are processed next day",
+   "depends_on": "enable_ach_autopay"
+  },
+  {
+   "fieldname": "notifications_section",
+   "fieldtype": "Section Break",
+   "label": "Notifications"
+  },
+  {
+   "default": "1",
+   "fieldname": "send_upcoming_debit_notification",
+   "fieldtype": "Check",
+   "label": "Send Upcoming Debit Notification",
+   "depends_on": "enable_ach_autopay"
+  },
+  {
+   "default": "1",
+   "fieldname": "send_success_notification",
+   "fieldtype": "Check",
+   "label": "Send Success Notification",
+   "depends_on": "enable_ach_autopay"
+  },
+  {
+   "default": "1",
+   "fieldname": "send_failure_notification",
+   "fieldtype": "Check",
+   "label": "Send Failure Notification",
+   "depends_on": "enable_ach_autopay"
+  }
+ ],
+ "index_web_pages_for_search": 1,
+ "issingle": 1,
+ "links": [],
+ "modified": "2024-01-01 00:00:00.000000",
+ "modified_by": "Administrator",
+ "module": "Payments",
+ "name": "ACH Settings",
+ "owner": "Administrator",
+ "permissions": [
+  {
+   "create": 1,
+   "delete": 1,
+   "email": 1,
+   "print": 1,
+   "read": 1,
+   "role": "System Manager",
+   "share": 1,
+   "write": 1
+  }
+ ],
+ "sort_field": "modified",
+ "sort_order": "DESC",
+ "states": []
+}
