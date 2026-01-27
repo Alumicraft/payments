@@ -5,14 +5,14 @@
 ACHQ Integration Module
 
 Provides client for ACHQ API operations and webhook handling.
+Based on ACHQ API documentation at developers.achq.com
 """
 
+import json
 import frappe
 from frappe import _
-from frappe.utils import now_datetime, cint
+from frappe.utils import now_datetime, getdate, today
 import requests
-import hashlib
-import hmac
 
 
 # ACHQ Status to internal status mapping
@@ -20,18 +20,20 @@ ACHQ_STATUS_MAP = {
     "Scheduled": "Scheduled",
     "InProcess": "Processing",
     "Cleared": "Success",
+    "Settled": "Success",
+    "Returned": "Returned",
     "Returned-NSF": "Returned",
     "Returned-Other": "Returned",
     "ChargedBack": "Returned",
     "Cancelled": "Cancelled",
+    "Rejected": "Failed",
 }
 
 
 class ACHQClient:
-    """Client for ACHQ API operations."""
+    """Client for ACHQ API operations using Direct Merchant mode."""
 
-    SANDBOX_URL = "https://www.speedchex.com/datalinks/transact.aspx"
-    PRODUCTION_URL = "https://www.speedchex.com/datalinks/transact.aspx"
+    BASE_URL = "https://www.speedchex.com/datalinks/transact.aspx"
 
     def __init__(self):
         self.settings = frappe.get_single("ACH Settings")
@@ -42,32 +44,30 @@ class ACHQClient:
         if not self.settings.enable_ach_autopay:
             frappe.throw(_("ACH Autopay is not enabled"))
 
-    @property
-    def base_url(self):
-        """Get the appropriate base URL based on environment."""
-        if self.settings.achq_environment == "Production":
-            return self.PRODUCTION_URL
-        return self.SANDBOX_URL
-
     def _get_auth_params(self):
-        """Get common authentication parameters."""
-        return {
-            "ProviderID": self.settings.achq_provider_id,
-            "Provider_GateID": self.settings.achq_provider_gate_id,
-            "Provider_GateKey": self.settings.get_password("achq_provider_gate_key"),
+        """Get authentication parameters for Direct Merchant mode."""
+        params = {
             "MerchantID": self.settings.achq_merchant_id,
             "Merchant_GateID": self.settings.achq_merchant_gate_id,
             "Merchant_GateKey": self.settings.get_password("achq_merchant_gate_key"),
         }
 
+        # Add TestMode for sandbox
+        if self.settings.achq_environment == "Sandbox":
+            params["TestMode"] = "On"
+
+        return params
+
     def _make_request(self, command, params):
         """Make a request to ACHQ API."""
         data = self._get_auth_params()
         data["Command"] = command
+        data["CommandVersion"] = "2.0"
+        data["ResponseType"] = "JSON"
         data.update(params)
 
         try:
-            response = requests.post(self.base_url, data=data, timeout=30)
+            response = requests.post(self.BASE_URL, data=data, timeout=30)
             response.raise_for_status()
             return self._parse_response(response.text)
         except requests.RequestException as e:
@@ -78,30 +78,37 @@ class ACHQClient:
             return {"success": False, "error_message": str(e)}
 
     def _parse_response(self, response_text):
-        """Parse ACHQ response (pipe-delimited format)."""
-        # ACHQ returns responses in format: Field1=Value1|Field2=Value2|...
-        result = {}
+        """Parse ACHQ JSON response."""
         if not response_text:
             return {"success": False, "error_message": "Empty response"}
 
-        pairs = response_text.strip().split("|")
-        for pair in pairs:
-            if "=" in pair:
-                key, value = pair.split("=", 1)
-                result[key.strip()] = value.strip()
+        try:
+            result = json.loads(response_text)
+        except json.JSONDecodeError as e:
+            frappe.log_error(
+                f"ACHQ response JSON parse error: {str(e)}\nResponse: {response_text[:500]}",
+                "ACHQ Integration"
+            )
+            return {"success": False, "error_message": f"Invalid JSON response: {str(e)}"}
 
-        # Check for success
-        status = result.get("Status", "").upper()
-        if status in ("APPROVED", "SUCCESS", "OK"):
+        # Check for success based on CommandStatus
+        command_status = result.get("CommandStatus", "").lower()
+        response_code = result.get("ResponseCode", "")
+
+        if command_status == "approved" or response_code == "000":
             result["success"] = True
         else:
             result["success"] = False
-            result["error_message"] = result.get("Message", result.get("ErrorMessage", "Unknown error"))
-            result["error_code"] = result.get("ErrorCode", result.get("Code", ""))
+            result["error_message"] = result.get("Description",
+                result.get("ErrorInformation", {}).get("Message", "Unknown error")
+                if isinstance(result.get("ErrorInformation"), dict)
+                else result.get("ErrorInformation", "Unknown error")
+            )
+            result["error_code"] = response_code
 
         return result
 
-    def tokenize_and_verify(self, routing_number, account_number, account_type, customer_name):
+    def tokenize_and_verify(self, routing_number, account_number, account_type, customer_name, check_type=None):
         """
         Create a token and verify the bank account.
 
@@ -110,6 +117,7 @@ class ACHQClient:
             account_number: Bank account number
             account_type: 'Checking' or 'Savings'
             customer_name: Customer's name for the account
+            check_type: 'Personal' or 'Business' (defaults to settings)
 
         Returns:
             dict with success, token, bank_name, verify_status
@@ -118,29 +126,42 @@ class ACHQClient:
             "RoutingNumber": routing_number,
             "AccountNumber": account_number,
             "AccountType": account_type,
-            "Billing_CustomerName": customer_name,
-            "Create_ACHQToken": "Yes",
+            "CheckType": check_type or self.settings.default_check_type or "Personal",
         }
 
         # Add Express Verify if enabled
         if self.settings.use_express_verify:
             params["Run_ExpressVerify"] = "Yes"
 
-        result = self._make_request("ECheck.CreateToken", params)
+        result = self._make_request("ECheck.CreateACHQToken", params)
 
         if result.get("success"):
+            # Handle nested ExpressVerify response
+            express_verify = result.get("ExpressVerify", {})
+            if isinstance(express_verify, dict):
+                verify_status = express_verify.get("Status", "UNK")
+                verify_code = express_verify.get("Code")
+                verify_desc = express_verify.get("Description")
+            else:
+                verify_status = "UNK"
+                verify_code = None
+                verify_desc = None
+
             return {
                 "success": True,
                 "token": result.get("ACHQToken"),
                 "bank_name": result.get("BankName", ""),
-                "verify_status": result.get("ExpressVerify_Status", "UNK"),
+                "verify_status": verify_status,
+                "verify_code": verify_code,
+                "verify_description": verify_desc,
                 "routing_last4": routing_number[-4:] if len(routing_number) >= 4 else routing_number,
                 "account_last4": account_number[-4:] if len(account_number) >= 4 else account_number,
+                "transact_reference_id": result.get("TransAct_ReferenceID"),
             }
 
         return result
 
-    def create_payment(self, amount, token, customer_name, description, txn_id):
+    def create_payment(self, amount, token, customer_name, description, txn_id, customer_ip=None):
         """
         Create a payment using a tokenized account.
 
@@ -150,6 +171,7 @@ class ACHQClient:
             customer_name: Customer's name
             description: Payment description
             txn_id: Internal transaction ID for tracking
+            customer_ip: Customer's IP address (optional)
 
         Returns:
             dict with success, transaction_id, status
@@ -160,9 +182,12 @@ class ACHQClient:
             "PaymentDirection": "FromCustomer",
             "SECCode": self.settings.default_sec_code,
             "Billing_CustomerName": customer_name,
-            "Description": description[:50] if description else "",  # ACHQ limit
-            "Provider_TransactionID": txn_id,
+            "Description": description[:50] if description else "",
+            "Merchant_ReferenceID": txn_id,
         }
+
+        if customer_ip:
+            params["Customer_IPAddress"] = customer_ip
 
         result = self._make_request("ECheck.ProcessPayment", params)
 
@@ -171,32 +196,46 @@ class ACHQClient:
                 "success": True,
                 "transaction_id": result.get("TransactionID"),
                 "status": result.get("PaymentStatus", "Scheduled"),
+                "transact_reference_id": result.get("TransAct_ReferenceID"),
             }
 
         return result
 
-    def get_payment_status(self, transaction_id):
+    def get_status_by_date(self, tracking_date):
         """
-        Get the status of a payment.
+        Get all payment status updates for a given date.
+
+        This is the correct way to poll for status updates in ACHQ.
+        Returns all transactions that had status changes on the specified date.
 
         Args:
-            transaction_id: ACHQ transaction ID
+            tracking_date: Date to query (date object or string YYYY-MM-DD)
 
         Returns:
-            dict with success, status, return_code, return_description
+            dict with success, transactions list
         """
+        if isinstance(tracking_date, str):
+            tracking_date = getdate(tracking_date)
+
+        # ACHQ expects MMDDYYYY format
+        date_str = tracking_date.strftime("%m%d%Y")
+
         params = {
-            "TransactionID": transaction_id,
+            "TrackingDate": date_str,
         }
 
-        result = self._make_request("ECheck.GetPaymentStatus", params)
+        result = self._make_request("ECheckReports.StatusTrackingQuery", params)
 
         if result.get("success"):
+            # Parse transactions from response
+            transactions = result.get("Transactions", [])
+            if not isinstance(transactions, list):
+                transactions = [transactions] if transactions else []
+
             return {
                 "success": True,
-                "status": result.get("PaymentStatus"),
-                "return_code": result.get("ReturnCode"),
-                "return_description": result.get("ReturnDescription"),
+                "transactions": transactions,
+                "tracking_date": tracking_date,
             }
 
         return result
@@ -235,29 +274,26 @@ def achq_webhook():
         # Get webhook data
         data = frappe.local.form_dict
 
-        # Log incoming webhook
-        frappe.log_error(
-            f"ACHQ Webhook received: {data}",
-            "ACHQ Webhook Debug"
-        )
+        # Log incoming webhook for debugging
+        frappe.logger().info(f"ACHQ Webhook received: {data}")
 
         # Extract key fields
         transaction_id = data.get("TransactionID")
-        provider_txn_id = data.get("Provider_TransactionID")
+        merchant_ref_id = data.get("Merchant_ReferenceID")
         payment_status = data.get("PaymentStatus", "").lower()
         return_code = data.get("ReturnCode")
         return_description = data.get("ReturnDescription")
 
-        if not transaction_id and not provider_txn_id:
+        if not transaction_id and not merchant_ref_id:
             frappe.log_error("ACHQ Webhook: No transaction ID provided", "ACHQ Webhook")
             return {"status": "error", "message": "No transaction ID"}
 
         # Find the ACH Transaction
         txn = None
-        if provider_txn_id:
-            # Provider_TransactionID is our internal transaction name
-            if frappe.db.exists("ACH Transaction", provider_txn_id):
-                txn = frappe.get_doc("ACH Transaction", provider_txn_id)
+        if merchant_ref_id:
+            # Merchant_ReferenceID is our internal transaction name
+            if frappe.db.exists("ACH Transaction", merchant_ref_id):
+                txn = frappe.get_doc("ACH Transaction", merchant_ref_id)
 
         if not txn and transaction_id:
             # Look up by ACHQ transaction ID
@@ -271,7 +307,7 @@ def achq_webhook():
 
         if not txn:
             frappe.log_error(
-                f"ACHQ Webhook: Transaction not found - ACHQ ID: {transaction_id}, Provider ID: {provider_txn_id}",
+                f"ACHQ Webhook: Transaction not found - ACHQ ID: {transaction_id}, Merchant Ref: {merchant_ref_id}",
                 "ACHQ Webhook"
             )
             return {"status": "error", "message": "Transaction not found"}
@@ -279,7 +315,7 @@ def achq_webhook():
         # Update transaction based on status
         txn.achq_status = payment_status
 
-        if payment_status in ("cleared", "success"):
+        if payment_status in ("cleared", "settled", "success"):
             txn.mark_success(achq_status=payment_status)
         elif payment_status in ("returned", "returned-nsf", "returned-other", "chargedback"):
             txn.mark_failed(
@@ -287,7 +323,7 @@ def achq_webhook():
                 failure_reason=return_description,
                 return_code=return_code
             )
-        elif payment_status in ("failed", "declined"):
+        elif payment_status in ("failed", "declined", "rejected"):
             txn.mark_failed(
                 failure_code=return_code or "FAILED",
                 failure_reason=return_description or "Payment failed"
@@ -306,12 +342,11 @@ def achq_webhook():
             f"ACHQ Webhook error: {str(e)}\nData: {frappe.local.form_dict}",
             "ACHQ Webhook Error"
         )
-        # Return success to prevent retries for processing errors
         return {"status": "error", "message": str(e)}
 
 
 @frappe.whitelist()
-def setup_bank_account(customer, loan, routing_number, account_number, account_type):
+def setup_bank_account(customer, loan, routing_number, account_number, account_type, check_type=None):
     """
     Set up a bank account for ACH autopay.
 
@@ -323,6 +358,7 @@ def setup_bank_account(customer, loan, routing_number, account_number, account_t
         routing_number: 9-digit routing number
         account_number: Bank account number
         account_type: 'Checking' or 'Savings'
+        check_type: 'Personal' or 'Business' (optional)
 
     Returns:
         dict with success, bank_name, account_last4, authorization_name
@@ -365,7 +401,8 @@ def setup_bank_account(customer, loan, routing_number, account_number, account_t
         routing_number=routing_number,
         account_number=account_number,
         account_type=account_type,
-        customer_name=customer_name
+        customer_name=customer_name,
+        check_type=check_type
     )
 
     if not result.get("success"):
