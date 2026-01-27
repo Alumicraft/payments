@@ -14,9 +14,6 @@ class ACHSettings(Document):
     def _validate_required_fields(self):
         """Ensure required ACHQ credentials are provided when enabled."""
         required_fields = [
-            ("achq_provider_id", "Provider ID"),
-            ("achq_provider_gate_id", "Provider Gate ID"),
-            ("achq_provider_gate_key", "Provider Gate Key"),
             ("achq_merchant_id", "Merchant ID"),
             ("achq_merchant_gate_id", "Merchant Gate ID"),
             ("achq_merchant_gate_key", "Merchant Gate Key"),
@@ -39,6 +36,16 @@ class ACHSettings(Document):
         if self.retry_delay_days < 1:
             frappe.throw("Retry delay days must be at least 1")
 
+    def has_plaid_credentials(self):
+        """Check if Plaid credentials are configured."""
+        return bool(self.plaid_client_id and self.plaid_secret)
+
+    def get_plaid_base_url(self):
+        """Get Plaid API base URL based on environment."""
+        if self.plaid_environment == "Production":
+            return "https://production.plaid.com"
+        return "https://sandbox.plaid.com"
+
 
 def get_ach_settings():
     """Get the ACH Settings singleton."""
@@ -49,3 +56,9 @@ def is_ach_enabled():
     """Check if ACH autopay is enabled."""
     settings = get_ach_settings()
     return settings.enable_ach_autopay
+
+
+def is_plaid_enabled():
+    """Check if Plaid integration is configured."""
+    settings = get_ach_settings()
+    return settings.enable_ach_autopay and settings.has_plaid_credentials()

@@ -8,13 +8,16 @@
   "enable_ach_autopay",
   "achq_credentials_section",
   "achq_environment",
-  "achq_provider_id",
-  "achq_provider_gate_id",
-  "achq_provider_gate_key",
-  "column_break_credentials",
   "achq_merchant_id",
   "achq_merchant_gate_id",
   "achq_merchant_gate_key",
+  "column_break_credentials",
+  "default_check_type",
+  "default_sec_code",
+  "plaid_section",
+  "plaid_environment",
+  "plaid_client_id",
+  "plaid_secret",
   "verification_section",
   "use_express_verify",
   "allow_unknown_accounts",
@@ -24,7 +27,6 @@
   "column_break_scheduling",
   "max_retry_attempts",
   "retry_delay_days",
-  "default_sec_code",
   "cutoff_time",
   "notifications_section",
   "send_upcoming_debit_notification",
@@ -53,43 +55,71 @@
    "depends_on": "enable_ach_autopay"
   },
   {
-   "fieldname": "achq_provider_id",
+   "fieldname": "achq_merchant_id",
    "fieldtype": "Data",
-   "label": "Provider ID",
-   "depends_on": "enable_ach_autopay"
+   "label": "Merchant ID",
+   "depends_on": "enable_ach_autopay",
+   "description": "Sandbox: 2001"
   },
   {
-   "fieldname": "achq_provider_gate_id",
+   "fieldname": "achq_merchant_gate_id",
    "fieldtype": "Data",
-   "label": "Provider Gate ID",
-   "depends_on": "enable_ach_autopay"
+   "label": "Merchant Gate ID",
+   "depends_on": "enable_ach_autopay",
+   "description": "Sandbox: test"
   },
   {
-   "fieldname": "achq_provider_gate_key",
+   "fieldname": "achq_merchant_gate_key",
    "fieldtype": "Password",
-   "label": "Provider Gate Key",
-   "depends_on": "enable_ach_autopay"
+   "label": "Merchant Gate Key",
+   "depends_on": "enable_ach_autopay",
+   "description": "Sandbox: test"
   },
   {
    "fieldname": "column_break_credentials",
    "fieldtype": "Column Break"
   },
   {
-   "fieldname": "achq_merchant_id",
-   "fieldtype": "Data",
-   "label": "Merchant ID",
+   "default": "Personal",
+   "fieldname": "default_check_type",
+   "fieldtype": "Select",
+   "label": "Default Check Type",
+   "options": "Personal\nBusiness",
+   "depends_on": "enable_ach_autopay",
+   "description": "For manual bank account entry"
+  },
+  {
+   "default": "WEB",
+   "fieldname": "default_sec_code",
+   "fieldtype": "Select",
+   "label": "Default SEC Code",
+   "options": "WEB\nPPD\nCCD\nTEL",
    "depends_on": "enable_ach_autopay"
   },
   {
-   "fieldname": "achq_merchant_gate_id",
-   "fieldtype": "Data",
-   "label": "Merchant Gate ID",
+   "fieldname": "plaid_section",
+   "fieldtype": "Section Break",
+   "label": "Plaid Integration",
+   "description": "Optional - for bank account linking via Plaid"
+  },
+  {
+   "default": "Sandbox",
+   "fieldname": "plaid_environment",
+   "fieldtype": "Select",
+   "label": "Plaid Environment",
+   "options": "Sandbox\nProduction",
    "depends_on": "enable_ach_autopay"
   },
   {
-   "fieldname": "achq_merchant_gate_key",
+   "fieldname": "plaid_client_id",
+   "fieldtype": "Data",
+   "label": "Plaid Client ID",
+   "depends_on": "enable_ach_autopay"
+  },
+  {
+   "fieldname": "plaid_secret",
    "fieldtype": "Password",
-   "label": "Merchant Gate Key",
+   "label": "Plaid Secret",
    "depends_on": "enable_ach_autopay"
   },
   {
@@ -102,7 +132,7 @@
    "fieldname": "use_express_verify",
    "fieldtype": "Check",
    "label": "Use Express Verify",
-   "description": "Verify bank accounts before accepting them",
+   "description": "Verify bank accounts before accepting them (for manual entry)",
    "depends_on": "enable_ach_autopay"
   },
   {
@@ -150,14 +180,6 @@
    "fieldname": "retry_delay_days",
    "fieldtype": "Int",
    "label": "Retry Delay Days",
-   "depends_on": "enable_ach_autopay"
-  },
-  {
-   "default": "WEB",
-   "fieldname": "default_sec_code",
-   "fieldtype": "Select",
-   "label": "Default SEC Code",
-   "options": "WEB\nPPD\nCCD\nTEL",
    "depends_on": "enable_ach_autopay"
   },
   {
