@@ -9,35 +9,39 @@ from frappe.utils import now_datetime
 
 class ACHAuthorization(Document):
     def validate(self):
-        self._validate_loan_customer()
-        self._validate_unique_active_authorization()
+        self._validate_single_default()
 
-    def _validate_loan_customer(self):
-        """Ensure the loan belongs to the specified customer."""
-        if self.loan:
-            loan_customer = frappe.db.get_value("Loan", self.loan, "applicant")
-            if loan_customer != self.customer:
-                frappe.throw(_("Loan {0} does not belong to Customer {1}").format(
-                    self.loan, self.customer
-                ))
-
-    def _validate_unique_active_authorization(self):
-        """Ensure only one active authorization per loan."""
-        if self.status == "Active":
+    def _validate_single_default(self):
+        """Ensure only one default account per customer."""
+        if self.is_default and self.status == "Active":
             existing = frappe.db.exists(
                 "ACH Authorization",
                 {
-                    "loan": self.loan,
+                    "customer": self.customer,
+                    "is_default": 1,
                     "status": "Active",
                     "name": ("!=", self.name)
                 }
             )
             if existing:
-                frappe.throw(
-                    _("An active ACH Authorization already exists for Loan {0}").format(
-                        self.loan
-                    )
-                )
+                # Auto-unset the other default
+                frappe.db.set_value("ACH Authorization", existing, "is_default", 0)
+
+    def set_as_default(self):
+        """Set this authorization as the default for the customer."""
+        if self.status != "Active":
+            frappe.throw(_("Only active authorizations can be set as default"))
+
+        # Unset any existing default for this customer
+        frappe.db.sql("""
+            UPDATE `tabACH Authorization`
+            SET is_default = 0
+            WHERE customer = %s AND is_default = 1 AND name != %s
+        """, (self.customer, self.name))
+
+        self.is_default = 1
+        self.save()
+        return True
 
     def pause(self, reason=None):
         """Temporarily pause auto-pay."""
@@ -55,21 +59,6 @@ class ACHAuthorization(Document):
         if self.status != "Paused":
             frappe.throw(_("Only paused authorizations can be resumed"))
 
-        # Check no other active authorization exists
-        existing = frappe.db.exists(
-            "ACH Authorization",
-            {
-                "loan": self.loan,
-                "status": "Active",
-                "name": ("!=", self.name)
-            }
-        )
-        if existing:
-            frappe.throw(
-                _("Another active authorization exists for this loan. "
-                  "Please revoke it first.")
-            )
-
         self.status = "Active"
         self.add_comment("Comment", "Authorization resumed")
         self.save()
@@ -80,7 +69,35 @@ class ACHAuthorization(Document):
         if self.status == "Revoked":
             frappe.throw(_("Authorization is already revoked"))
 
+        # Check if this is the only default and customer has loans with pending payments
+        if self.is_default:
+            other_active = frappe.db.exists(
+                "ACH Authorization",
+                {
+                    "customer": self.customer,
+                    "status": "Active",
+                    "name": ("!=", self.name)
+                }
+            )
+            if not other_active:
+                # Check for loans using default (no override)
+                loans_using_default = frappe.db.count(
+                    "Loan",
+                    {
+                        "applicant": self.customer,
+                        "status": ["in", ["Disbursed", "Partially Disbursed"]],
+                        "ach_payment_account": ["in", ["", None]]
+                    }
+                )
+                if loans_using_default > 0:
+                    frappe.msgprint(
+                        _("Warning: {0} active loans will have no payment account after revocation. "
+                          "Consider adding a new account first.").format(loans_using_default),
+                        indicator="orange"
+                    )
+
         self.status = "Revoked"
+        self.is_default = 0  # Clear default flag on revocation
         self.revocation_date = now_datetime()
         self.revocation_reason = reason
         self.save()
@@ -107,13 +124,48 @@ class ACHAuthorization(Document):
             txn.cancel_transaction("Authorization revoked")
 
 
-def get_active_authorization(loan):
-    """Get the active ACH Authorization for a loan."""
+def get_customer_default_authorization(customer):
+    """Get the default ACH Authorization for a customer."""
     auth_name = frappe.db.get_value(
         "ACH Authorization",
-        {"loan": loan, "status": "Active"},
+        {"customer": customer, "is_default": 1, "status": "Active"},
         "name"
     )
     if auth_name:
         return frappe.get_doc("ACH Authorization", auth_name)
     return None
+
+
+def get_loan_payment_account(loan):
+    """
+    Get the effective ACH Authorization for a loan.
+
+    Resolution logic:
+    1. Check loan.ach_payment_account (if active) → use it
+    2. If override exists but revoked → FAIL (don't fall back)
+    3. Check customer's default (if active) → use it
+    4. No valid account → return None
+    """
+    loan_doc = frappe.get_doc("Loan", loan) if isinstance(loan, str) else loan
+
+    # Check for loan-specific override
+    if loan_doc.get("ach_payment_account"):
+        auth = frappe.get_doc("ACH Authorization", loan_doc.ach_payment_account)
+        if auth.status == "Active":
+            return auth
+        else:
+            # Override exists but is not active - don't fall back silently
+            frappe.log_error(
+                f"Loan {loan_doc.name} has ACH override {auth.name} but it is {auth.status}",
+                "ACH Payment Account Error"
+            )
+            return None
+
+    # Fall back to customer's default
+    return get_customer_default_authorization(loan_doc.applicant)
+
+
+# Keep old function name for backward compatibility
+def get_active_authorization(loan):
+    """Get the active ACH Authorization for a loan (legacy function)."""
+    return get_loan_payment_account(loan)

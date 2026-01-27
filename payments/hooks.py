@@ -19,7 +19,9 @@ fixtures = [
                 "Payment Request-allow_card_payment",
                 "Payment Request-card_processing_fee",
                 "Payment Request-total_with_card_fee",
-                "Customer-stripe_customer_id"
+                "Customer-stripe_customer_id",
+                "Loan-ach_payment_section",
+                "Loan-ach_payment_account"
             ]]
         ]
     }

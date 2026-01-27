@@ -7,9 +7,10 @@
  "engine": "InnoDB",
  "field_order": [
   "customer",
-  "loan",
+  "is_default",
   "status",
   "column_break_main",
+  "token_source",
   "authorization_date",
   "bank_account_section",
   "bank_name",
@@ -38,13 +39,12 @@
    "reqd": 1
   },
   {
-   "fieldname": "loan",
-   "fieldtype": "Link",
+   "default": "0",
+   "fieldname": "is_default",
+   "fieldtype": "Check",
    "in_list_view": 1,
-   "in_standard_filter": 1,
-   "label": "Loan",
-   "options": "Loan",
-   "reqd": 1
+   "label": "Default Account",
+   "description": "Use this account for all loans unless overridden"
   },
   {
    "default": "Active",
@@ -58,6 +58,15 @@
   {
    "fieldname": "column_break_main",
    "fieldtype": "Column Break"
+  },
+  {
+   "default": "Manual",
+   "fieldname": "token_source",
+   "fieldtype": "Select",
+   "label": "Token Source",
+   "options": "Manual\nPlaid",
+   "read_only": 1,
+   "description": "How the bank account was connected"
   },
   {
    "fieldname": "authorization_date",

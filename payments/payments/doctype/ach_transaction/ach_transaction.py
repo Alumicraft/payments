@@ -6,17 +6,36 @@ from frappe import _
 from frappe.model.document import Document
 from frappe.utils import now_datetime, add_days, getdate, today
 
-# Return codes that should not be retried
+# Return codes that CAN be retried (typically funding issues)
+RETRYABLE_RETURN_CODES = {
+    "R01": "Insufficient Funds",
+    "R09": "Uncollected Funds",
+}
+
+# Return codes that should NOT be retried (account/authorization issues)
 NON_RETRYABLE_RETURN_CODES = {
     "R02": "Account Closed",
-    "R03": "No Account",
+    "R03": "No Account/Unable to Locate",
     "R04": "Invalid Account Number",
-    "R07": "Authorization Revoked",
+    "R05": "Unauthorized Debit to Consumer Account",
+    "R07": "Authorization Revoked by Customer",
     "R08": "Payment Stopped",
     "R10": "Customer Advises Unauthorized",
+    "R11": "Check Truncation Entry Return",
     "R16": "Account Frozen",
     "R20": "Non-Transaction Account",
-    "R29": "Corporate Not Authorized",
+    "R29": "Corporate Customer Advises Not Authorized",
+}
+
+# ACHQ internal rejection codes (pre-flight failures)
+ACHQ_REJECTION_CODES = {
+    "D01": "Duplicate Transaction",
+    "S01": "Invalid Routing Number",
+    "S02": "Known Bad Account",
+    "S10": "Invalid Account Type",
+    "S11": "Invalid Check Type",
+    "S12": "Invalid Amount",
+    "S13": "Invalid Merchant Reference ID",
 }
 
 
@@ -52,13 +71,17 @@ class ACHTransaction(Document):
         # Import and use ACHQ client
         from payments.api.achq_integration import ACHQClient
 
+        # Get customer name for the API call
+        customer_name = frappe.db.get_value("Customer", self.customer, "customer_name")
+
         client = ACHQClient()
         result = client.create_payment(
             amount=self.amount,
             token=auth.get_password("achq_token"),
-            customer_name=auth.customer,
+            customer_name=customer_name,
             description=f"Loan payment for {self.loan}",
-            txn_id=self.name
+            txn_id=self.name,
+            token_source=auth.token_source  # Pass token_source for Plaid vs Manual handling
         )
 
         if result.get("success"):
@@ -152,10 +175,19 @@ class ACHTransaction(Document):
         if self.retry_attempt >= self.max_retries:
             return False
 
-        # Don't retry non-retryable return codes
+        # Don't retry non-retryable return codes (account/authorization issues)
         if return_code and return_code in NON_RETRYABLE_RETURN_CODES:
             return False
 
+        # Don't retry ACHQ pre-flight rejections (data issues)
+        if return_code and return_code in ACHQ_REJECTION_CODES:
+            return False
+
+        # Explicitly retryable codes (funding issues) - always retry if under max
+        if return_code and return_code in RETRYABLE_RETURN_CODES:
+            return True
+
+        # For unknown codes, default to retry (to be safe)
         return True
 
     def schedule_retry(self):
