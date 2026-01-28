@@ -33,7 +33,8 @@ def create_custom_fields():
                 "label": "Stripe Invoice URL",
                 "fieldtype": "Data",
                 "read_only": 1,
-                "insert_after": "stripe_section"
+                "insert_after": "stripe_section",
+                "options": "URL"
             },
             {
                 "fieldname": "stripe_invoice_id",
@@ -95,23 +96,6 @@ def create_custom_fields():
                 "read_only": 1,
                 "insert_after": "customer_name"
             }
-        ],
-        "Loan": [
-            {
-                "fieldname": "ach_payment_section",
-                "label": "ACH Payment",
-                "fieldtype": "Section Break",
-                "insert_after": "repayment_method",
-                "collapsible": 1
-            },
-            {
-                "fieldname": "ach_payment_account",
-                "label": "ACH Payment Account",
-                "fieldtype": "Link",
-                "options": "ACH Authorization",
-                "insert_after": "ach_payment_section",
-                "description": "Specific bank account for this loan (leave blank to use customer's default)"
-            }
         ]
     }
     
@@ -130,9 +114,7 @@ def delete_custom_fields():
         "Payment Request-allow_card_payment",
         "Payment Request-card_processing_fee",
         "Payment Request-total_with_card_fee",
-        "Customer-stripe_customer_id",
-        "Loan-ach_payment_section",
-        "Loan-ach_payment_account"
+        "Customer-stripe_customer_id"
     ]
     
     for field in fields_to_delete:
