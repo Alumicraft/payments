@@ -1,0 +1,241 @@
+{
+ "actions": [],
+ "autoname": "format:ACH-TXN-{#####}",
+ "creation": "2024-01-01 00:00:00.000000",
+ "doctype": "DocType",
+ "editable_grid": 1,
+ "engine": "InnoDB",
+ "field_order": [
+  "ach_authorization",
+  "loan",
+  "customer",
+  "column_break_main",
+  "amount",
+  "status",
+  "scheduled_date",
+  "achq_section",
+  "achq_transaction_id",
+  "achq_status",
+  "column_break_achq",
+  "initiated_date",
+  "completed_date",
+  "settlement_date",
+  "retry_section",
+  "retry_attempt",
+  "max_retries",
+  "column_break_retry",
+  "next_retry_date",
+  "original_transaction",
+  "failure_section",
+  "failure_code",
+  "failure_reason",
+  "return_code",
+  "erpnext_section",
+  "payment_entry",
+  "notification_sent"
+ ],
+ "fields": [
+  {
+   "fieldname": "ach_authorization",
+   "fieldtype": "Link",
+   "in_list_view": 1,
+   "in_standard_filter": 1,
+   "label": "ACH Authorization",
+   "options": "ACH Authorization",
+   "reqd": 1
+  },
+  {
+   "fieldname": "loan",
+   "fieldtype": "Link",
+   "in_list_view": 1,
+   "in_standard_filter": 1,
+   "label": "Loan",
+   "options": "Loan",
+   "reqd": 1
+  },
+  {
+   "fetch_from": "ach_authorization.customer",
+   "fieldname": "customer",
+   "fieldtype": "Link",
+   "label": "Customer",
+   "options": "Customer",
+   "read_only": 1
+  },
+  {
+   "fieldname": "column_break_main",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "amount",
+   "fieldtype": "Currency",
+   "in_list_view": 1,
+   "label": "Amount",
+   "reqd": 1
+  },
+  {
+   "default": "Scheduled",
+   "fieldname": "status",
+   "fieldtype": "Select",
+   "in_list_view": 1,
+   "in_standard_filter": 1,
+   "label": "Status",
+   "options": "Scheduled\nInitiated\nProcessing\nSuccess\nFailed\nReturned\nCancelled"
+  },
+  {
+   "fieldname": "scheduled_date",
+   "fieldtype": "Date",
+   "in_list_view": 1,
+   "label": "Scheduled Date"
+  },
+  {
+   "fieldname": "achq_section",
+   "fieldtype": "Section Break",
+   "label": "ACHQ"
+  },
+  {
+   "fieldname": "achq_transaction_id",
+   "fieldtype": "Data",
+   "label": "ACHQ Transaction ID",
+   "read_only": 1
+  },
+  {
+   "fieldname": "achq_status",
+   "fieldtype": "Data",
+   "label": "ACHQ Status",
+   "read_only": 1
+  },
+  {
+   "fieldname": "column_break_achq",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "initiated_date",
+   "fieldtype": "Datetime",
+   "label": "Initiated Date",
+   "read_only": 1
+  },
+  {
+   "fieldname": "completed_date",
+   "fieldtype": "Datetime",
+   "label": "Completed Date",
+   "read_only": 1
+  },
+  {
+   "fieldname": "settlement_date",
+   "fieldtype": "Date",
+   "label": "Settlement Date",
+   "read_only": 1
+  },
+  {
+   "fieldname": "retry_section",
+   "fieldtype": "Section Break",
+   "label": "Retry"
+  },
+  {
+   "default": "0",
+   "fieldname": "retry_attempt",
+   "fieldtype": "Int",
+   "label": "Retry Attempt"
+  },
+  {
+   "default": "2",
+   "fieldname": "max_retries",
+   "fieldtype": "Int",
+   "label": "Max Retries"
+  },
+  {
+   "fieldname": "column_break_retry",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "next_retry_date",
+   "fieldtype": "Date",
+   "label": "Next Retry Date"
+  },
+  {
+   "fieldname": "original_transaction",
+   "fieldtype": "Link",
+   "label": "Original Transaction",
+   "options": "ACH Transaction"
+  },
+  {
+   "collapsible": 1,
+   "fieldname": "failure_section",
+   "fieldtype": "Section Break",
+   "label": "Failure"
+  },
+  {
+   "fieldname": "failure_code",
+   "fieldtype": "Data",
+   "label": "Failure Code",
+   "read_only": 1
+  },
+  {
+   "fieldname": "failure_reason",
+   "fieldtype": "Small Text",
+   "label": "Failure Reason",
+   "read_only": 1
+  },
+  {
+   "fieldname": "return_code",
+   "fieldtype": "Data",
+   "label": "Return Code",
+   "read_only": 1
+  },
+  {
+   "fieldname": "erpnext_section",
+   "fieldtype": "Section Break",
+   "label": "ERPNext"
+  },
+  {
+   "fieldname": "payment_entry",
+   "fieldtype": "Link",
+   "label": "Payment Entry",
+   "options": "Payment Entry",
+   "read_only": 1
+  },
+  {
+   "default": "0",
+   "fieldname": "notification_sent",
+   "fieldtype": "Check",
+   "label": "Notification Sent"
+  }
+ ],
+ "index_web_pages_for_search": 1,
+ "links": [],
+ "modified": "2024-01-01 00:00:00.000000",
+ "modified_by": "Administrator",
+ "module": "Payments for Lending",
+ "name": "ACH Transaction",
+ "naming_rule": "Expression",
+ "owner": "Administrator",
+ "permissions": [
+  {
+   "create": 1,
+   "delete": 1,
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "System Manager",
+   "share": 1,
+   "write": 1
+  },
+  {
+   "create": 1,
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "Accounts Manager",
+   "share": 1,
+   "write": 1
+  }
+ ],
+ "sort_field": "modified",
+ "sort_order": "DESC",
+ "states": [],
+ "track_changes": 1
+}
