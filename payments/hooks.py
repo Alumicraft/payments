@@ -19,9 +19,7 @@ fixtures = [
                 "Payment Request-allow_card_payment",
                 "Payment Request-card_processing_fee",
                 "Payment Request-total_with_card_fee",
-                "Customer-stripe_customer_id",
-                "Loan-ach_payment_section",
-                "Loan-ach_payment_account"
+                "Customer-stripe_customer_id"
             ]]
         ]
     }
@@ -37,8 +35,7 @@ doc_events = {
 
 # Include JS in doctype views
 doctype_js = {
-    "Payment Request": "public/js/payment_request.js",
-    "Loan": "public/js/loan.js"
+    "Payment Request": "public/js/payment_request.js"
 }
 
 # Include CSS
@@ -49,14 +46,10 @@ doctype_js = {
 
 # Scheduled Tasks
 scheduler_events = {
-    "daily": [
-        "payments.tasks.scheduled_debits.process_upcoming_payments",
-        "payments.tasks.scheduled_debits.initiate_scheduled_transactions",
-        "payments.tasks.scheduled_debits.process_retry_transactions"
-    ],
-    "hourly": [
-        "payments.tasks.scheduled_debits.check_pending_transactions"
-    ],
+    # Uncomment if you need periodic tasks
+    # "daily": [
+    #     "payments.tasks.daily_sync"
+    # ],
 }
 
 # Jinja filters
