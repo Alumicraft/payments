@@ -118,9 +118,10 @@ def _create_stripe_invoice_internal(doc):
     # Calculate amounts and payment methods
     base_amount = doc.grand_total
     allow_card = doc.allow_card_payment and is_us_customer  # Cards only for US customers
-    
+    fee_rate = (settings.card_fee_rate or 3) / 100  # Get fee rate from settings
+
     if allow_card:
-        card_fee = round(base_amount * 0.03, 2)
+        card_fee = round(base_amount * fee_rate, 2)
         doc.card_processing_fee = card_fee
         doc.total_with_card_fee = base_amount + card_fee
     else:
@@ -135,15 +136,7 @@ def _create_stripe_invoice_internal(doc):
     else:
         # International customers - enable bank transfer (wire)
         payment_method_types = ['customer_balance']
-    
-    # Build invoice footer
-    footer_text = build_invoice_footer(
-        base_amount=base_amount,
-        allow_card=allow_card,
-        is_us_customer=is_us_customer,
-        settings=settings
-    )
-    
+
     # Create Stripe Invoice
     try:
         # Build invoice create params
@@ -152,7 +145,6 @@ def _create_stripe_invoice_internal(doc):
             'collection_method': 'send_invoice',
             'due_date': get_due_date_timestamp(doc),
             'auto_advance': False,  # Don't auto-finalize
-            'footer': footer_text,
             'metadata': {
                 'erpnext_payment_request': doc.name,
                 'erpnext_customer': customer.name if customer else '',
@@ -199,12 +191,13 @@ def _create_stripe_invoice_internal(doc):
 
         # Add card processing fee as separate line item if card payments enabled
         if allow_card and doc.card_processing_fee:
+            fee_percent = settings.card_fee_rate or 3
             stripe.InvoiceItem.create(
                 customer=stripe_customer_id,
                 invoice=invoice.id,
                 amount=int(doc.card_processing_fee * 100),  # Convert to cents
                 currency=currency,
-                description="Card Processing Fee (3%)",
+                description=f"Card Processing Fee ({fee_percent}%)",
                 metadata={'fee_type': 'card_processing_fee'}
             )
         
@@ -403,38 +396,6 @@ def get_invoice_description(doc):
         parts.append(f"Payment Request: {doc.name}")
     
     return " | ".join(parts)
-
-
-def build_invoice_footer(base_amount, allow_card, is_us_customer, settings):
-    """Build invoice footer text with payment options."""
-    if not is_us_customer:
-        # International customer - wire transfer only
-        wire_info = []
-        if settings.bank_name:
-            wire_info.append(f"Bank: {settings.bank_name}")
-        if settings.routing_number:
-            wire_info.append(f"Routing: {settings.routing_number}")
-        if settings.account_number:
-            wire_info.append(f"Account: {settings.account_number}")
-        if settings.swift_code:
-            wire_info.append(f"SWIFT: {settings.swift_code}")
-        
-        wire_details = "\n".join(wire_info) if wire_info else "Contact us for wire transfer details."
-        return f"International Wire Transfer Details:\n{wire_details}"
-    
-    if allow_card:
-        card_fee = round(base_amount * 0.03, 2)
-        total_with_fee = base_amount + card_fee
-        return (
-            f"Payment Options:\n"
-            f"• ACH Direct Debit (Bank Transfer): ${base_amount:,.2f} - Recommended, saves 3%!\n"
-            f"• Credit/Debit Card: ${total_with_fee:,.2f} (includes ${card_fee:,.2f} processing fee)"
-        )
-    else:
-        return (
-            "Payment via ACH Direct Debit (bank transfer) only.\n"
-            "Need to pay by card? Contact us to request a card payment invoice."
-        )
 
 
 def is_rate_limited(payment_request_name):

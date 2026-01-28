@@ -73,6 +73,13 @@
             "description": "Automatically create Stripe Invoice when Payment Request is saved"
         },
         {
+            "fieldname": "card_fee_rate",
+            "fieldtype": "Percent",
+            "label": "Card Fee Rate (%)",
+            "default": "3",
+            "description": "Fee percentage charged to customer for card payments"
+        },
+        {
             "fieldname": "wire_transfer_section",
             "fieldtype": "Section Break",
             "label": "Wire Transfer Details (for International Customers)"
@@ -125,7 +132,7 @@
             "fieldtype": "Link",
             "label": "Card Fee Income Account",
             "options": "Account",
-            "description": "Income account for customer-paid card processing fees (3% surcharge)"
+            "description": "Income account for customer-paid card processing fees"
         },
         {
             "fieldname": "stripe_bank_account",
