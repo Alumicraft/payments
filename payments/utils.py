@@ -249,7 +249,17 @@ def get_or_create_stripe_customer(doc, customer, stripe):
         str: Stripe Customer ID
     """
     if customer and customer.stripe_customer_id:
-        return customer.stripe_customer_id
+        try:
+            stripe.Customer.retrieve(customer.stripe_customer_id)
+            return customer.stripe_customer_id
+        except stripe.error.InvalidRequestError:
+            # Customer no longer exists in Stripe - clear stale ID
+            customer.stripe_customer_id = None
+            customer.save(ignore_permissions=True)
+            frappe.log_error(
+                f"Cleared stale Stripe customer ID for {customer.name}",
+                "Stripe Integration"
+            )
     
     customer_email = doc.email_to
     customer_name = customer.customer_name if customer else doc.party_name or customer_email
