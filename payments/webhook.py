@@ -83,7 +83,7 @@ def handle_stripe_webhook():
         webhook_event_doc.save(ignore_permissions=True)
         frappe.db.commit()
         
-        frappe.log_error(f"Error processing webhook {event_id}: {str(e)}", "Stripe Webhook Error")
+        frappe.log_error(str(e), f"Webhook Error: {event_id}")
         return {"status": "error", "event_id": event_id, "error": str(e)}
 
 
@@ -195,10 +195,11 @@ def handle_invoice_paid(event):
     if payment_request.stripe_payment_status == "Paid":
         return {"message": f"Payment Request {payment_request_name} already marked as paid"}
 
-    # Update Payment Request status
-    payment_request.stripe_payment_status = "Paid"
-    payment_request.stripe_payment_intent_id = invoice.get('payment_intent')
-    payment_request.save(ignore_permissions=True)
+    # Update Payment Request status (use set_value for submitted docs)
+    frappe.db.set_value("Payment Request", payment_request_name, {
+        "stripe_payment_status": "Paid",
+        "stripe_payment_intent_id": invoice.get('payment_intent')
+    }, update_modified=False)
 
     # Create Payment Entry
     result = {
@@ -356,10 +357,11 @@ def handle_payment_intent_succeeded(event):
     if payment_request.stripe_payment_status == "Paid":
         return {"message": f"Payment Request {payment_request_name} already paid via invoice.paid event"}
     
-    # Update status and create payment entry
-    payment_request.stripe_payment_status = "Paid"
-    payment_request.stripe_payment_intent_id = payment_intent.get('id')
-    payment_request.save(ignore_permissions=True)
+    # Update status (use set_value for submitted docs)
+    frappe.db.set_value("Payment Request", payment_request_name, {
+        "stripe_payment_status": "Paid",
+        "stripe_payment_intent_id": payment_intent.get('id')
+    }, update_modified=False)
     
     # Fetch invoice for payment entry creation
     import stripe
