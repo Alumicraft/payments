@@ -110,7 +110,8 @@ def _create_stripe_invoice_internal(doc):
     # Get customer info
     customer = get_erpnext_customer(doc)
     customer_country = get_customer_country(customer) if customer else "US"
-    is_us_customer = customer_country == "US" or customer_country == "United States"
+    country_lower = (customer_country or "").strip().lower()
+    is_us_customer = country_lower in ("us", "united states", "united states of america", "usa")
     
     # Get or create Stripe customer
     stripe_customer_id = get_or_create_stripe_customer(doc, customer, stripe)
@@ -128,14 +129,19 @@ def _create_stripe_invoice_internal(doc):
         doc.card_processing_fee = 0
         doc.total_with_card_fee = 0
     
-    # Determine payment methods based on customer location
-    if is_us_customer:
-        payment_method_types = ['us_bank_account']  # ACH Direct Debit
-        if allow_card:
-            payment_method_types.append('card')
-    else:
-        # International customers - enable bank transfer (wire)
-        payment_method_types = ['customer_balance']
+    # International customers — skip Stripe, handle wire transfer manually
+    if not is_us_customer:
+        frappe.msgprint(
+            _("International customer — Stripe invoice not created. Handle wire transfer manually."),
+            alert=True,
+            indicator='orange'
+        )
+        return
+
+    # Determine payment methods (US customers only at this point)
+    payment_method_types = ['us_bank_account']  # ACH Direct Debit
+    if allow_card:
+        payment_method_types.append('card')
 
     # Create Stripe Invoice
     try:
@@ -150,27 +156,11 @@ def _create_stripe_invoice_internal(doc):
                 'erpnext_customer': customer.name if customer else '',
                 'erpnext_invoice_number': doc.reference_name or '',
                 'allow_card_payment': '1' if allow_card else '0'
-            }
-        }
-
-        # Add payment method types
-        if payment_method_types:
-            payment_settings = {
+            },
+            'payment_settings': {
                 'payment_method_types': payment_method_types
             }
-
-            # For international customers using bank transfer, configure funding options
-            if 'customer_balance' in payment_method_types:
-                payment_settings['payment_method_options'] = {
-                    'customer_balance': {
-                        'funding_type': 'bank_transfer',
-                        'bank_transfer': {
-                            'type': 'us_domestic_wire'  # Wire transfer
-                        }
-                    }
-                }
-
-            invoice_params['payment_settings'] = payment_settings
+        }
 
         # Create invoice
         invoice = stripe.Invoice.create(**invoice_params)
