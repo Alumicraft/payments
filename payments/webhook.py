@@ -444,6 +444,10 @@ def create_payment_entry(payment_request, invoice):
     # Get amount in proper currency
     amount_paid = invoice.get('amount_paid', 0) / 100  # Convert from cents
     currency = invoice.get('currency', 'usd').upper()
+
+    # Exclude card fee — it's recorded separately as income via Journal Entry
+    if payment_request.allow_card_payment and payment_request.card_processing_fee:
+        amount_paid = amount_paid - float(payment_request.card_processing_fee)
     
     # Get company from Payment Request
     company = payment_request.company or frappe.defaults.get_user_default("Company")
