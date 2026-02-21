@@ -144,20 +144,16 @@ function calculate_card_fees(frm) {
  */
 function update_status_indicator(frm) {
     const status_config = {
-        'Pending': { color: 'orange', icon: '⏳' },
-        'Paid': { color: 'green', icon: '✓' },
-        'Failed': { color: 'red', icon: '✗' },
-        'Voided': { color: 'grey', icon: '○' },
-        'Action Required': { color: 'yellow', icon: '!' }
+        'Pending': 'orange',
+        'Paid': 'green',
+        'Failed': 'red',
+        'Voided': 'grey',
+        'Action Required': 'yellow'
     };
 
     const status = frm.doc.stripe_payment_status;
 
     if (status && status_config[status]) {
-        const config = status_config[status];
-        frm.page.set_indicator(
-            `${config.icon} Stripe: ${status}`,
-            config.color
-        );
+        frm.page.set_indicator(status, status_config[status]);
     }
 }
