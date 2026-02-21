@@ -52,9 +52,12 @@ def handle_stripe_webhook():
         except json.JSONDecodeError:
             frappe.throw(_("Invalid JSON payload"), frappe.ValidationError)
     
+    # Run as Administrator after signature is verified
+    frappe.set_user("Administrator")
+
     event_id = event.get('id')
     event_type = event.get('type')
-    
+
     frappe.log_error(f"Received Stripe webhook: {event_type} ({event_id})", "Stripe Webhook")
     
     # Idempotency check - skip if already processed
