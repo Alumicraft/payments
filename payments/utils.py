@@ -333,9 +333,15 @@ def get_customer_country(customer):
     
     if address:
         country = frappe.db.get_value("Address", address, "country")
-        return country or "US"
-    
-    return customer.territory if customer.territory else "US"
+        if country and frappe.db.exists("Country", country):
+            return country
+        return "US"
+
+    # Fall back to territory — check if it's a valid country name
+    if customer.territory and frappe.db.exists("Country", customer.territory):
+        return customer.territory
+
+    return "US"
 
 
 def get_due_date_timestamp(doc):
