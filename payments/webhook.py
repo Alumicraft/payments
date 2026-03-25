@@ -211,10 +211,7 @@ def handle_invoice_paid(event):
     }
 
     try:
-        payment_entry = create_payment_entry(payment_request, invoice)
-        result["payment_entry"] = payment_entry.name if payment_entry else None
-
-        # Fetch Stripe fee from charge/balance transaction
+        # Fetch Stripe fee from charge/balance transaction BEFORE creating Payment Entry
         stripe_fee = 0
         charge_id = invoice.get('charge')
 
@@ -229,6 +226,9 @@ def handle_invoice_paid(event):
                     stripe_fee = balance_txn.fee / 100  # Convert cents to dollars
             except Exception as e:
                 frappe.log_error(f"Failed to fetch Stripe fee: {str(e)}", "Stripe Webhook")
+
+        payment_entry = create_payment_entry(payment_request, invoice, stripe_fee=stripe_fee)
+        result["payment_entry"] = payment_entry.name if payment_entry else None
 
         # Record Stripe fee as expense (if fee > 0 and accounts configured)
         if stripe_fee > 0:
@@ -373,9 +373,22 @@ def handle_payment_intent_succeeded(event):
     
     try:
         invoice = stripe.Invoice.retrieve(invoice_id)
-        payment_entry = create_payment_entry(payment_request, invoice)
+
+        # Fetch Stripe fee from charge/balance transaction
+        stripe_fee = 0
+        charge_id = invoice.get('charge')
+        if charge_id:
+            try:
+                charge = stripe.Charge.retrieve(charge_id)
+                if charge.balance_transaction:
+                    balance_txn = stripe.BalanceTransaction.retrieve(charge.balance_transaction)
+                    stripe_fee = balance_txn.fee / 100  # Convert cents to dollars
+            except Exception as e:
+                frappe.log_error(f"Failed to fetch Stripe fee: {str(e)}", "Stripe Webhook")
+
+        payment_entry = create_payment_entry(payment_request, invoice, stripe_fee=stripe_fee)
         frappe.db.commit()
-        
+
         return {
             "message": "Payment recorded via payment_intent.succeeded",
             "payment_request": payment_request_name,
@@ -415,14 +428,15 @@ def find_payment_request(invoice):
     )
 
 
-def create_payment_entry(payment_request, invoice):
+def create_payment_entry(payment_request, invoice, stripe_fee=0):
     """
     Create Payment Entry for a paid invoice.
-    
+
     Args:
         payment_request: Payment Request document
         invoice: Stripe invoice object
-    
+        stripe_fee: Stripe processing fee in dollars (default 0)
+
     Returns:
         Payment Entry document or None
     """
@@ -505,7 +519,8 @@ def create_payment_entry(payment_request, invoice):
             "reference_no": invoice.get('payment_intent') or invoice.get('id'),
             "reference_date": now_datetime(),
             "mode_of_payment": mode_of_payment,
-            "remarks": f"Payment received via Stripe Invoice {invoice.get('id')}"
+            "remarks": f"Payment received via Stripe Invoice {invoice.get('id')}",
+            "custom_stripe_fee": stripe_fee
         })
         
         # Add reference to original document if available

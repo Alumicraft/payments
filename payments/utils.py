@@ -251,7 +251,7 @@ def get_or_create_stripe_customer(doc, customer, stripe):
                 "Stripe Integration"
             )
     
-    customer_email = doc.email_to
+    customer_email = (doc.email_to or "").split(",")[0].strip()
     customer_name = customer.customer_name if customer else doc.party_name or customer_email
     
     # Try to find existing Stripe customer by email
