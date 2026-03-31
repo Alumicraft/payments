@@ -1,6 +1,16 @@
 // Copyright (c) 2026, Your Company and contributors
 // For license information, please see license.txt
 
+// Suppress ERPNext's "Missing Payments App" dialog — we use our own Stripe integration
+const _original_msgprint = frappe.msgprint;
+frappe.msgprint = function(msg) {
+    const text = typeof msg === 'object' ? (msg.message || msg.title || '') : msg;
+    if (typeof text === 'string' && text.includes('payments app is not installed')) {
+        return;
+    }
+    return _original_msgprint.apply(this, arguments);
+};
+
 frappe.ui.form.on('Payment Request', {
     refresh: function (frm) {
         // Add Stripe-related buttons when invoice exists
