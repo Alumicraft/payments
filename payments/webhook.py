@@ -200,6 +200,7 @@ def handle_invoice_paid(event):
 
     # Update Payment Request status (use set_value for submitted docs)
     frappe.db.set_value("Payment Request", payment_request_name, {
+        "status": "Paid",
         "stripe_payment_status": "Paid",
         "stripe_payment_intent_id": invoice.get('payment_intent')
     }, update_modified=False)
@@ -270,12 +271,10 @@ def handle_invoice_payment_failed(event):
         return {"message": f"No Payment Request found for invoice {invoice_id}"}
     
     # Update status only - no follow-up emails
-    frappe.db.set_value(
-        "Payment Request",
-        payment_request_name,
-        "stripe_payment_status",
-        "Failed"
-    )
+    frappe.db.set_value("Payment Request", payment_request_name, {
+        "status": "Failed",
+        "stripe_payment_status": "Failed"
+    }, update_modified=False)
     
     # Log failure reason
     failure_message = invoice.get('last_finalization_error', {}).get('message', 'Unknown error')
@@ -296,12 +295,10 @@ def handle_invoice_voided(event):
     if not payment_request_name:
         return {"message": f"No Payment Request found for invoice {invoice_id}"}
     
-    frappe.db.set_value(
-        "Payment Request",
-        payment_request_name,
-        "stripe_payment_status",
-        "Voided"
-    )
+    frappe.db.set_value("Payment Request", payment_request_name, {
+        "status": "Cancelled",
+        "stripe_payment_status": "Voided"
+    }, update_modified=False)
     
     return {"message": f"Payment Request {payment_request_name} marked as voided"}
 
@@ -362,6 +359,7 @@ def handle_payment_intent_succeeded(event):
     
     # Update status (use set_value for submitted docs)
     frappe.db.set_value("Payment Request", payment_request_name, {
+        "status": "Paid",
         "stripe_payment_status": "Paid",
         "stripe_payment_intent_id": payment_intent.get('id')
     }, update_modified=False)
