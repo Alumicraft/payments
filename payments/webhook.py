@@ -198,6 +198,20 @@ def handle_invoice_paid(event):
     if payment_request.stripe_payment_status == "Paid":
         return {"message": f"Payment Request {payment_request_name} already marked as paid"}
 
+    # Don't overwrite Cancelled status — payment was collected but request was cancelled in ERPNext
+    if payment_request.status == "Cancelled":
+        frappe.db.set_value("Payment Request", payment_request_name, {
+            "stripe_payment_status": "Paid",
+            "stripe_payment_intent_id": invoice.get('payment_intent')
+        }, update_modified=False)
+        frappe.log_error(
+            f"Stripe payment received for cancelled Payment Request {payment_request_name} (Invoice: {invoice_id}). "
+            "Review and refund if needed.",
+            "Stripe Payment on Cancelled Request"
+        )
+        frappe.db.commit()
+        return {"message": f"Payment Request {payment_request_name} is cancelled but Stripe collected payment — logged for review"}
+
     # Update Payment Request status (use set_value for submitted docs)
     frappe.db.set_value("Payment Request", payment_request_name, {
         "status": "Paid",
@@ -356,7 +370,21 @@ def handle_payment_intent_succeeded(event):
     # Only process if not already paid (invoice.paid should have handled it)
     if payment_request.stripe_payment_status == "Paid":
         return {"message": f"Payment Request {payment_request_name} already paid via invoice.paid event"}
-    
+
+    # Don't overwrite Cancelled status
+    if payment_request.status == "Cancelled":
+        frappe.db.set_value("Payment Request", payment_request_name, {
+            "stripe_payment_status": "Paid",
+            "stripe_payment_intent_id": payment_intent.get('id')
+        }, update_modified=False)
+        frappe.log_error(
+            f"Stripe payment received for cancelled Payment Request {payment_request_name}. "
+            "Review and refund if needed.",
+            "Stripe Payment on Cancelled Request"
+        )
+        frappe.db.commit()
+        return {"message": f"Payment Request {payment_request_name} is cancelled but Stripe collected payment — logged for review"}
+
     # Update status (use set_value for submitted docs)
     frappe.db.set_value("Payment Request", payment_request_name, {
         "status": "Paid",
