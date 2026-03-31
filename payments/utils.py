@@ -511,3 +511,57 @@ def get_stripe_invoice_status(payment_request_name):
         
     except stripe.error.StripeError as e:
         return {"status": "error", "error": str(e)}
+
+
+def void_stripe_invoice_on_cancel(doc, method=None):
+    """
+    Void the Stripe Invoice when a Payment Request is cancelled.
+    Triggered by on_cancel hook on Payment Request.
+
+    Prevents customers from paying an invoice that ERPNext has already cancelled.
+    Only voids open/draft invoices — paid or already-voided invoices are skipped.
+    """
+    if not doc.stripe_invoice_id:
+        return
+
+    # Only void if Stripe payment is still pending
+    if doc.stripe_payment_status and doc.stripe_payment_status not in ("Pending", ""):
+        return
+
+    import stripe
+
+    settings = get_stripe_settings()
+    if not settings:
+        return
+
+    stripe.api_key = settings.get_password("api_key")
+
+    try:
+        invoice = stripe.Invoice.retrieve(doc.stripe_invoice_id)
+
+        if invoice.status in ("open", "draft"):
+            if invoice.status == "draft":
+                # Draft invoices must be finalized before voiding
+                stripe.Invoice.finalize_invoice(doc.stripe_invoice_id)
+
+            stripe.Invoice.void_invoice(doc.stripe_invoice_id)
+
+            frappe.db.set_value("Payment Request", doc.name,
+                "stripe_payment_status", "Voided", update_modified=False)
+
+            frappe.msgprint(f"Stripe Invoice {doc.stripe_invoice_id} has been voided.")
+        elif invoice.status == "paid":
+            frappe.msgprint(
+                f"Stripe Invoice {doc.stripe_invoice_id} is already paid — cannot void. "
+                "Consider issuing a refund in Stripe.",
+                indicator="orange", alert=True
+            )
+    except stripe.error.StripeError as e:
+        frappe.log_error(
+            f"Failed to void Stripe Invoice {doc.stripe_invoice_id}: {str(e)}",
+            "Stripe Invoice Void Error"
+        )
+        frappe.msgprint(
+            f"Could not void Stripe Invoice: {str(e)}. Please void it manually in Stripe.",
+            indicator="red", alert=True
+        )

@@ -30,7 +30,8 @@ fixtures = [
 doc_events = {
     "Payment Request": {
         "on_submit": "payments.utils.create_stripe_invoice",
-        "on_update": "payments.utils.handle_payment_request_update"
+        "on_update": "payments.utils.handle_payment_request_update",
+        "on_cancel": "payments.utils.void_stripe_invoice_on_cancel"
     }
 }
 
