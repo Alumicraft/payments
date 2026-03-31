@@ -514,6 +514,68 @@ def get_stripe_invoice_status(payment_request_name):
         return {"status": "error", "error": str(e)}
 
 
+def void_stripe_invoice_on_manual_payment(doc, method=None):
+    """
+    Void open Stripe Invoices when a Payment Entry is manually submitted.
+    Triggered by on_submit hook on Payment Entry.
+
+    Checks if any linked Payment Request has an open Stripe invoice and voids it
+    to prevent double payment.
+    """
+    import stripe
+
+    # Check each reference in the Payment Entry for linked Payment Requests
+    for ref in doc.references:
+        payment_requests = frappe.get_all(
+            "Payment Request",
+            filters={
+                "reference_doctype": ref.reference_doctype,
+                "reference_name": ref.reference_name,
+                "stripe_invoice_id": ["is", "set"],
+                "stripe_payment_status": "Pending",
+                "docstatus": 1
+            },
+            fields=["name", "stripe_invoice_id"]
+        )
+
+        if not payment_requests:
+            continue
+
+        settings = get_stripe_settings()
+        if not settings:
+            continue
+
+        stripe.api_key = settings.get_password("api_key")
+
+        for pr in payment_requests:
+            try:
+                invoice = stripe.Invoice.retrieve(pr.stripe_invoice_id)
+
+                if invoice.status in ("open", "draft"):
+                    if invoice.status == "draft":
+                        stripe.Invoice.finalize_invoice(pr.stripe_invoice_id)
+                    stripe.Invoice.void_invoice(pr.stripe_invoice_id)
+
+                    frappe.db.set_value("Payment Request", pr.name, {
+                        "status": "Paid",
+                        "stripe_payment_status": "Voided"
+                    }, update_modified=False)
+
+                    frappe.msgprint(
+                        f"Stripe Invoice {pr.stripe_invoice_id} voided for {pr.name} — payment received manually.",
+                        indicator="green", alert=True
+                    )
+            except stripe.error.StripeError as e:
+                frappe.log_error(
+                    f"Failed to void Stripe Invoice {pr.stripe_invoice_id} after manual payment: {str(e)}",
+                    "Stripe Invoice Void Error"
+                )
+                frappe.msgprint(
+                    f"Could not void Stripe Invoice {pr.stripe_invoice_id}: {str(e)}. Please void it manually in Stripe.",
+                    indicator="red", alert=True
+                )
+
+
 def void_stripe_invoice_on_cancel(doc, method=None):
     """
     Void the Stripe Invoice when a Payment Request is cancelled.

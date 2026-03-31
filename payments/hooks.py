@@ -32,6 +32,9 @@ doc_events = {
         "on_submit": "payments.utils.create_stripe_invoice",
         "on_update": "payments.utils.handle_payment_request_update",
         "on_cancel": "payments.utils.void_stripe_invoice_on_cancel"
+    },
+    "Payment Entry": {
+        "on_submit": "payments.utils.void_stripe_invoice_on_manual_payment"
     }
 }
 
