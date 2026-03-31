@@ -47,7 +47,7 @@ def create_custom_fields():
                 "fieldname": "stripe_payment_status",
                 "label": "Stripe Payment Status",
                 "fieldtype": "Select",
-                "options": "\nPending\nPaid\nFailed\nVoided\nAction Required",
+                "options": "\nN/A\nPending\nPaid\nFailed\nVoided\nAction Required",
                 "read_only": 1,
                 "insert_after": "stripe_invoice_id"
             },

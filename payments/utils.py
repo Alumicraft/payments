@@ -131,6 +131,7 @@ def _create_stripe_invoice_internal(doc):
     
     # International customers — skip Stripe, handle wire transfer manually
     if not is_us_customer:
+        doc.db_set("stripe_payment_status", "N/A", update_modified=False)
         frappe.msgprint(
             _("International customer — Stripe invoice not created. Handle wire transfer manually."),
             alert=True,

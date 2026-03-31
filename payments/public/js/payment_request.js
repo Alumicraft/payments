@@ -144,6 +144,7 @@ function calculate_card_fees(frm) {
  */
 function update_status_indicator(frm) {
     const status_config = {
+        'N/A': 'light-gray',
         'Pending': 'orange',
         'Paid': 'green',
         'Failed': 'red',
