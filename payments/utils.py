@@ -349,17 +349,20 @@ def get_due_date_timestamp(doc):
     """
     Get due date timestamp for Stripe Invoice.
     Prioritizes Payment Request due date, then Reference Document due date, then default 30 days.
+    Uses UTC consistently to avoid timezone mismatch between Frappe (system tz) and Python (OS tz).
     """
+    import calendar
+    from datetime import datetime, timedelta
+
     due_date = None
-    
+
     # 1. Try Payment Request due date (if exists)
     if hasattr(doc, 'payment_due_date') and doc.payment_due_date:
         due_date = doc.payment_due_date
-        
+
     # 2. Try Reference Document due date
     elif doc.reference_doctype and doc.reference_name:
         try:
-            # Common field names for due date
             for field in ['due_date', 'payment_due_date', 'bill_date']:
                 val = frappe.db.get_value(doc.reference_doctype, doc.reference_name, field)
                 if val:
@@ -367,26 +370,32 @@ def get_due_date_timestamp(doc):
                     break
         except Exception:
             pass
-            
-    # Calculate timestamp
+
+    # Calculate timestamp using UTC consistently
     if due_date:
         dt = get_datetime(due_date)
-        
+
         # If midnight (just a date), set to end of day
         if dt.hour == 0 and dt.minute == 0 and dt.second == 0:
             dt = dt.replace(hour=23, minute=59, second=59)
-            
-        # Stripe requires due_date to be in the future
-        # If due date is in the past, set to tomorrow
-        if dt <= now_datetime():
-            from frappe.utils import add_days
-            return int(get_datetime(add_days(now_datetime(), 1)).timestamp())
-            
-        return int(dt.timestamp())
-        
+
+        # Use calendar.timegm which always treats naive datetime as UTC
+        timestamp = int(calendar.timegm(dt.timetuple()))
+
+        # Stripe requires due_date in the future — compare against current UTC time
+        now_utc = int(calendar.timegm(datetime.utcnow().timetuple()))
+
+        if timestamp <= now_utc:
+            # Set to tomorrow end-of-day UTC
+            tomorrow = datetime.utcnow() + timedelta(days=1)
+            tomorrow = tomorrow.replace(hour=23, minute=59, second=59)
+            return int(calendar.timegm(tomorrow.timetuple()))
+
+        return timestamp
+
     # Default: 30 days from now
-    from frappe.utils import add_days
-    return int(get_datetime(add_days(now_datetime(), 30)).timestamp())
+    future = datetime.utcnow() + timedelta(days=30)
+    return int(calendar.timegm(future.timetuple()))
 
 
 def get_invoice_description(doc):
