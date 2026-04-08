@@ -460,9 +460,13 @@ def regenerate_stripe_invoice(payment_request_name):
     stripe.api_key = settings.get_password("api_key")
     
     try:
-        # Void existing invoice
-        stripe.Invoice.void_invoice(doc.stripe_invoice_id)
-        
+        # Cancel existing invoice (delete if draft, void if open)
+        existing = stripe.Invoice.retrieve(doc.stripe_invoice_id)
+        if existing.status == "draft":
+            stripe.Invoice.delete(doc.stripe_invoice_id)
+        elif existing.status == "open":
+            stripe.Invoice.void_invoice(doc.stripe_invoice_id)
+
         # Clear existing invoice data
         doc.stripe_invoice_id = None
         doc.stripe_invoice_url = None
@@ -562,8 +566,9 @@ def void_stripe_invoice_on_manual_payment(doc, method=None):
 
                 if invoice.status in ("open", "draft"):
                     if invoice.status == "draft":
-                        stripe.Invoice.finalize_invoice(pr.stripe_invoice_id)
-                    stripe.Invoice.void_invoice(pr.stripe_invoice_id)
+                        stripe.Invoice.delete(pr.stripe_invoice_id)
+                    else:
+                        stripe.Invoice.void_invoice(pr.stripe_invoice_id)
 
                     frappe.db.set_value("Payment Request", pr.name, {
                         "status": "Paid",
@@ -613,10 +618,10 @@ def void_stripe_invoice_on_cancel(doc, method=None):
 
         if invoice.status in ("open", "draft"):
             if invoice.status == "draft":
-                # Draft invoices must be finalized before voiding
-                stripe.Invoice.finalize_invoice(doc.stripe_invoice_id)
-
-            stripe.Invoice.void_invoice(doc.stripe_invoice_id)
+                # Draft invoices can't be voided — delete them instead
+                stripe.Invoice.delete(doc.stripe_invoice_id)
+            else:
+                stripe.Invoice.void_invoice(doc.stripe_invoice_id)
 
             frappe.db.set_value("Payment Request", doc.name,
                 "stripe_payment_status", "Voided", update_modified=False)
