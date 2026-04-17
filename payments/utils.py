@@ -254,23 +254,22 @@ def get_or_create_stripe_customer(doc, customer, stripe):
     
     customer_email = (doc.email_to or "").split(",")[0].strip()
     customer_name = customer.customer_name if customer else doc.party_name or customer_email
-    
-    # Try to find existing Stripe customer by email
-    try:
-        existing_customers = stripe.Customer.list(email=customer_email, limit=1)
-        if existing_customers.data:
-            stripe_customer_id = existing_customers.data[0].id
-            
-            # Save to ERPNext Customer if exists
-            if customer:
+
+    # Try to find existing Stripe customer by ERPNext customer metadata.
+    # Email alone is unreliable because multiple ERPNext customers can share an email.
+    if customer:
+        try:
+            search_query = f'metadata["erpnext_customer"]:"{customer.name}"'
+            search_results = stripe.Customer.search(query=search_query, limit=1)
+            if search_results.data:
+                stripe_customer_id = search_results.data[0].id
                 customer.reload()
                 if not customer.stripe_customer_id:
                     customer.stripe_customer_id = stripe_customer_id
                     customer.save(ignore_permissions=True)
-            
-            return stripe_customer_id
-    except Exception as e:
-        frappe.log_error(f"Error searching Stripe customers: {str(e)}", "Stripe Integration")
+                return stripe_customer_id
+        except Exception as e:
+            frappe.log_error(f"Error searching Stripe customers: {str(e)}", "Stripe Integration")
     
     # Create new Stripe customer
     try:
