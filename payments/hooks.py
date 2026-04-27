@@ -5,9 +5,10 @@ app_description = "ERPNext Stripe Invoicing Integration with persistent payment 
 app_email = "hello@example.com"
 app_license = "MIT"
 app_version = "1.0.0"
+# Semver ranges live in pyproject.toml under [tool.bench.frappe-dependencies]
 required_apps = [
-    "frappe>=16.0.0 <17.0.0",
-    "erpnext>=16.0.0 <17.0.0",
+    "frappe",
+    "erpnext",
 ]
 
 # Fixtures - export custom fields
