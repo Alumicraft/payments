@@ -6,8 +6,8 @@ app_email = "hello@example.com"
 app_license = "MIT"
 app_version = "1.0.0"
 required_apps = [
-    "frappe>=15.0.0 <16.0.0",
-    "erpnext>=15.0.0 <16.0.0",
+    "frappe>=16.0.0 <17.0.0",
+    "erpnext>=16.0.0 <17.0.0",
 ]
 
 # Fixtures - export custom fields
