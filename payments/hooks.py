@@ -4,7 +4,11 @@ app_publisher = "Your Company"
 app_description = "ERPNext Stripe Invoicing Integration with persistent payment links"
 app_email = "hello@example.com"
 app_license = "MIT"
-required_apps = ["frappe", "erpnext"]
+app_version = "1.0.0"
+required_apps = [
+    "frappe>=15.0.0 <16.0.0",
+    "erpnext>=15.0.0 <16.0.0",
+]
 
 # Fixtures - export custom fields
 fixtures = [
