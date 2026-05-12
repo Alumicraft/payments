@@ -352,7 +352,7 @@ def handle_payment_intent_succeeded(event):
         dict: Processing result
     """
     payment_intent = event.get('data', {}).get('object', {})
-    invoice_id = payment_intent.get('invoice')
+    invoice_id = get_payment_intent_invoice_id(payment_intent)
     
     if not invoice_id:
         # Not related to an invoice
@@ -402,10 +402,12 @@ def handle_payment_intent_succeeded(event):
     
     try:
         invoice = stripe.Invoice.retrieve(invoice_id)
+        if hasattr(invoice, "to_dict_recursive"):
+            invoice = invoice.to_dict_recursive()
 
         # Fetch Stripe fee from charge/balance transaction
         stripe_fee = 0
-        charge_id = invoice.get('charge')
+        charge_id = invoice.get('charge') or payment_intent.get('latest_charge')
         if charge_id:
             try:
                 charge = stripe.Charge.retrieve(charge_id)
@@ -416,19 +418,61 @@ def handle_payment_intent_succeeded(event):
                 frappe.log_error(f"Failed to fetch Stripe fee: {str(e)}", "Stripe Webhook")
 
         payment_entry = create_payment_entry(payment_request, invoice, stripe_fee=stripe_fee)
-        frappe.db.commit()
-
-        return {
+        result = {
             "message": "Payment recorded via payment_intent.succeeded",
             "payment_request": payment_request_name,
             "payment_entry": payment_entry.name if payment_entry else None
         }
+
+        if stripe_fee > 0:
+            try:
+                result["fee_journal_entry"] = record_stripe_fee(
+                    payment_request, stripe_fee, invoice_id
+                )
+            except Exception as e:
+                frappe.log_error(f"Failed to record Stripe fee: {str(e)}", "Stripe Webhook Error")
+
+        if payment_request.allow_card_payment and payment_request.card_processing_fee:
+            try:
+                result["card_fee_journal_entry"] = record_card_fee_income(
+                    payment_request, payment_request.card_processing_fee, invoice_id
+                )
+            except Exception as e:
+                frappe.log_error(
+                    f"Failed to record card fee income: {str(e)}",
+                    "Stripe Webhook Error",
+                )
+
+        frappe.db.commit()
+
+        return result
     except Exception as e:
         frappe.log_error(
             f"Backup payment processing failed for {payment_request_name}: {str(e)}",
             "Stripe Webhook Error"
         )
         return {"message": f"Status updated but Payment Entry creation failed: {str(e)}"}
+
+
+def get_payment_intent_invoice_id(payment_intent):
+    """
+    Return the Stripe invoice ID represented by a PaymentIntent event.
+
+    Some Stripe invoice payments do not populate payment_intent.invoice in the
+    event payload. In that shape, Stripe sends the invoice reference under
+    payment_details.order_reference.
+    """
+    invoice_id = payment_intent.get('invoice')
+    if invoice_id:
+        return invoice_id
+
+    payment_details = payment_intent.get('payment_details') or {}
+    invoice_id = payment_details.get('order_reference')
+    if invoice_id:
+        return invoice_id
+
+    metadata = payment_intent.get('metadata') or {}
+    return metadata.get('invoice') or metadata.get('stripe_invoice_id')
 
 
 def find_payment_request(invoice):

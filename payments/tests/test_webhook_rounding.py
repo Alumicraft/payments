@@ -74,3 +74,34 @@ def test_reference_allocation_ignores_sales_order_deposits(monkeypatch):
     amount = webhook.get_reference_allocation_amount(payment_request("Sales Order"), 100.00)
 
     assert amount == 100.00
+
+
+def test_payment_intent_invoice_id_uses_order_reference(monkeypatch):
+    webhook = load_webhook(monkeypatch)
+
+    invoice_id = webhook.get_payment_intent_invoice_id(
+        {
+            "id": "pi_123",
+            "payment_details": {
+                "order_reference": "in_123",
+            },
+        }
+    )
+
+    assert invoice_id == "in_123"
+
+
+def test_payment_intent_invoice_id_prefers_invoice_field(monkeypatch):
+    webhook = load_webhook(monkeypatch)
+
+    invoice_id = webhook.get_payment_intent_invoice_id(
+        {
+            "id": "pi_123",
+            "invoice": "in_direct",
+            "payment_details": {
+                "order_reference": "in_order_reference",
+            },
+        }
+    )
+
+    assert invoice_id == "in_direct"
