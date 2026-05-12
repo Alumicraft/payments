@@ -3,8 +3,11 @@
 
 import frappe
 from frappe import _
-from frappe.utils import now_datetime
+from frappe.utils import flt, now_datetime
 import json
+
+
+ROUNDING_TOLERANCE = 0.01
 
 
 @frappe.whitelist(allow_guest=True)
@@ -488,6 +491,8 @@ def create_payment_entry(payment_request, invoice, stripe_fee=0):
     # Exclude card fee — it's recorded separately as income via Journal Entry
     if payment_request.allow_card_payment and payment_request.card_processing_fee:
         amount_paid = amount_paid - float(payment_request.card_processing_fee)
+
+    amount_paid = get_reference_allocation_amount(payment_request, amount_paid)
     
     # Get company from Payment Request
     company = payment_request.company or frappe.defaults.get_user_default("Company")
@@ -592,6 +597,38 @@ def get_receivable_account(company):
         )
 
     return account
+
+
+def get_reference_allocation_amount(payment_request, amount_paid):
+    """
+    Snap Stripe allocation to the invoice balance for one-cent residuals only.
+
+    Stripe amounts and ERPNext invoice balances can differ by a cent because
+    each side rounds at slightly different points. Larger differences are left
+    untouched so deposits, fees, and real underpayments remain visible.
+    """
+    amount_paid = flt(amount_paid, 2)
+
+    if (
+        payment_request.reference_doctype != "Sales Invoice"
+        or not payment_request.reference_name
+    ):
+        return amount_paid
+
+    outstanding_amount = frappe.db.get_value(
+        "Sales Invoice",
+        payment_request.reference_name,
+        "outstanding_amount",
+    )
+
+    if outstanding_amount is None:
+        return amount_paid
+
+    outstanding_amount = flt(outstanding_amount, 2)
+    if outstanding_amount > 0 and abs(outstanding_amount - amount_paid) <= ROUNDING_TOLERANCE:
+        return outstanding_amount
+
+    return amount_paid
 
 
 def record_stripe_fee(payment_request, fee_amount, stripe_invoice_id):
