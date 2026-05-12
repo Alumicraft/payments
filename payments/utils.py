@@ -569,12 +569,12 @@ def get_stripe_invoice_status(payment_request_name):
         invoice = stripe.Invoice.retrieve(doc.stripe_invoice_id)
         
         return {
-            "status": invoice.status,
-            "amount_due": invoice.amount_due / 100,
-            "amount_paid": invoice.amount_paid / 100,
-            "currency": invoice.currency,
-            "hosted_invoice_url": invoice.hosted_invoice_url,
-            "paid": invoice.paid
+            "status": invoice.get("status"),
+            "amount_due": (invoice.get("amount_due") or 0) / 100,
+            "amount_paid": (invoice.get("amount_paid") or 0) / 100,
+            "currency": invoice.get("currency"),
+            "hosted_invoice_url": invoice.get("hosted_invoice_url"),
+            "paid": invoice.get("paid", invoice.get("status") == "paid")
         }
         
     except stripe.error.StripeError as e:
