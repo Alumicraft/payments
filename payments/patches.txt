@@ -1,2 +1,3 @@
 payments.patches.v1_0.sync_paid_payment_requests
 payments.patches.v1_0.reconcile_stripe_payment_requests
+payments.patches.v1_0.retry_missing_stripe_payment_entries

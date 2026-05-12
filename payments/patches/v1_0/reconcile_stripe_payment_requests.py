@@ -87,8 +87,11 @@ def create_missing_entries_for_paid_requests(settings):
                 continue
 
             stripe_invoice = stripe.Invoice.retrieve(row.stripe_invoice_id)
-            if stripe_invoice.get("status") != "paid":
+            if getattr(stripe_invoice, "status", None) != "paid":
                 continue
+
+            if hasattr(stripe_invoice, "to_dict_recursive"):
+                stripe_invoice = stripe_invoice.to_dict_recursive()
 
             payment_request = frappe.get_doc("Payment Request", row.name)
             payment_entry = create_payment_entry(payment_request, stripe_invoice)
