@@ -595,6 +595,73 @@ def get_stripe_object_value(obj, key, default=None):
         return default
 
 
+@frappe.whitelist()
+def close_paid_payment_request_stripe_invoice(payment_request_name):
+    """
+    Void/delete an unpaid Stripe invoice after ERPNext has already been paid.
+
+    This is intentionally narrow: it only runs for submitted Payment Requests
+    whose reference document is already paid/closed or cancelled. It prevents an
+    old payment link from collecting duplicate money.
+    """
+    doc = frappe.get_doc("Payment Request", payment_request_name)
+
+    if doc.docstatus != 1:
+        frappe.throw(_("Payment Request must be submitted"))
+
+    if not doc.stripe_invoice_id:
+        frappe.throw(_("No Stripe invoice exists for this Payment Request"))
+
+    if not is_reference_paid_or_cancelled(doc):
+        frappe.throw(
+            _("Reference {0} {1} is not paid or cancelled").format(
+                doc.reference_doctype, doc.reference_name
+            )
+        )
+
+    stripe_payment_status = close_stripe_invoice_after_external_payment(doc.stripe_invoice_id)
+    frappe.db.set_value(
+        "Payment Request",
+        doc.name,
+        {
+            "status": "Paid" if doc.status != "Cancelled" else doc.status,
+            "stripe_payment_status": stripe_payment_status,
+        },
+        update_modified=False,
+    )
+
+    return {
+        "payment_request": doc.name,
+        "stripe_invoice_id": doc.stripe_invoice_id,
+        "stripe_payment_status": stripe_payment_status,
+    }
+
+
+def is_reference_paid_or_cancelled(payment_request):
+    if not payment_request.reference_doctype or not payment_request.reference_name:
+        return payment_request.status == "Paid"
+
+    if not frappe.db.exists(payment_request.reference_doctype, payment_request.reference_name):
+        return False
+
+    if payment_request.reference_doctype == "Sales Invoice":
+        values = frappe.db.get_value(
+            "Sales Invoice",
+            payment_request.reference_name,
+            ["docstatus", "outstanding_amount"],
+            as_dict=True,
+        )
+        return values.docstatus == 2 or flt(values.outstanding_amount, 2) <= 0
+
+    values = frappe.db.get_value(
+        payment_request.reference_doctype,
+        payment_request.reference_name,
+        ["docstatus", "status"],
+        as_dict=True,
+    )
+    return values.docstatus == 2 or values.status in ("Paid", "Closed", "Completed", "Cancelled")
+
+
 def void_stripe_invoice_on_manual_payment(doc, method=None):
     """
     Void open Stripe Invoices when a Payment Entry is manually submitted.
