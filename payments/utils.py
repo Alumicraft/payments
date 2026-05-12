@@ -11,6 +11,10 @@ import json
 RATE_LIMIT_SECONDS = 5
 
 
+def to_currency_float(value):
+    return round(float(value or 0), 2)
+
+
 def create_stripe_invoice(doc, method=None):
     """
     Create a Stripe Invoice for a Payment Request.
@@ -651,7 +655,7 @@ def is_reference_paid_or_cancelled(payment_request):
             ["docstatus", "outstanding_amount"],
             as_dict=True,
         )
-        return values.docstatus == 2 or flt(values.outstanding_amount, 2) <= 0
+        return values.docstatus == 2 or to_currency_float(values.outstanding_amount) <= 0
 
     values = frappe.db.get_value(
         payment_request.reference_doctype,
