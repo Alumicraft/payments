@@ -49,6 +49,7 @@ def create_custom_fields():
                 "fieldtype": "Select",
                 "options": "\nN/A\nPending\nPaid\nFailed\nVoided\nAction Required",
                 "read_only": 1,
+                "allow_on_submit": 1,
                 "insert_after": "stripe_invoice_id"
             },
             {
@@ -56,6 +57,7 @@ def create_custom_fields():
                 "label": "Stripe Payment Intent ID",
                 "fieldtype": "Data",
                 "read_only": 1,
+                "allow_on_submit": 1,
                 "insert_after": "stripe_payment_status"
             },
             {
