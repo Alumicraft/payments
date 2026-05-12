@@ -127,6 +127,31 @@ def test_paid_payment_request_update_syncs_pending_stripe_status(monkeypatch):
     ]
 
 
+def test_paid_payment_request_update_voids_open_stripe_invoice(monkeypatch):
+    settings = SimpleNamespace(get_password=lambda fieldname: "sk_test")
+    utils, fake_frappe, fake_stripe = load_utils(monkeypatch, "open", settings=settings)
+    doc = SimpleNamespace(
+        docstatus=1,
+        status="Paid",
+        outstanding_amount=0,
+        stripe_invoice_id="in_open",
+        stripe_payment_status="Pending",
+        db_set=lambda *args, **kwargs: fake_frappe.db.set_value("Payment Request", "PAY-REQ-PAID", args, kwargs),
+    )
+
+    utils.sync_paid_payment_request_status(doc)
+
+    assert fake_stripe.voided == ["in_open"]
+    assert fake_frappe.db.values == [
+        (
+            "Payment Request",
+            "PAY-REQ-PAID",
+            ("stripe_payment_status", "Voided"),
+            {"update_modified": False},
+        )
+    ]
+
+
 def test_submitted_payment_entry_marks_request_paid_when_stripe_invoice_already_paid(monkeypatch):
     settings = SimpleNamespace(get_password=lambda fieldname: "sk_test")
     utils, fake_frappe, fake_stripe = load_utils(monkeypatch, "paid", settings)

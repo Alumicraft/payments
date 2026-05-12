@@ -99,7 +99,48 @@ def sync_paid_payment_request_status(doc):
         and doc.stripe_invoice_id
         and doc.stripe_payment_status == "Pending"
     ):
-        doc.db_set("stripe_payment_status", "Paid", update_modified=False)
+        stripe_payment_status = close_stripe_invoice_after_external_payment(doc.stripe_invoice_id)
+        doc.db_set("stripe_payment_status", stripe_payment_status, update_modified=False)
+
+
+def close_stripe_invoice_after_external_payment(stripe_invoice_id):
+    """
+    Close a pending Stripe invoice after ERPNext records payment elsewhere.
+
+    Returns the local Stripe payment status to store on Payment Request.
+    """
+    import stripe
+
+    settings = get_stripe_settings()
+    if not settings:
+        return "Paid"
+
+    stripe.api_key = settings.get_password("api_key")
+
+    try:
+        invoice = stripe.Invoice.retrieve(stripe_invoice_id)
+
+        if invoice.status == "draft":
+            stripe.Invoice.delete(stripe_invoice_id)
+            return "Voided"
+
+        if invoice.status == "open":
+            stripe.Invoice.void_invoice(stripe_invoice_id)
+            return "Voided"
+
+        if invoice.status == "void":
+            return "Voided"
+
+        if invoice.status == "paid":
+            return "Paid"
+
+    except stripe.error.StripeError as e:
+        frappe.log_error(
+            f"Failed to close Stripe Invoice {stripe_invoice_id} after external payment: {str(e)}",
+            "Stripe Invoice Close Error"
+        )
+
+    return "Paid"
 
 
 def _create_stripe_invoice_internal(doc):
@@ -550,8 +591,6 @@ def void_stripe_invoice_on_manual_payment(doc, method=None):
     cleanup is best-effort and should not be the only path that updates the
     Payment Request status.
     """
-    import stripe
-
     # Check each reference in the Payment Entry for linked Payment Requests
     for ref in doc.references:
         payment_requests = frappe.get_all(
@@ -569,50 +608,18 @@ def void_stripe_invoice_on_manual_payment(doc, method=None):
         if not payment_requests:
             continue
 
-        settings = get_stripe_settings()
-        if settings:
-            stripe.api_key = settings.get_password("api_key")
-
         for pr in payment_requests:
-            stripe_payment_status = "Paid"
-            stripe_cleanup_error = None
-
-            try:
-                if settings:
-                    invoice = stripe.Invoice.retrieve(pr.stripe_invoice_id)
-
-                    if invoice.status in ("open", "draft"):
-                        if invoice.status == "draft":
-                            stripe.Invoice.delete(pr.stripe_invoice_id)
-                        else:
-                            stripe.Invoice.void_invoice(pr.stripe_invoice_id)
-                        stripe_payment_status = "Voided"
-                    elif invoice.status == "void":
-                        stripe_payment_status = "Voided"
-                    elif invoice.status == "paid":
-                        stripe_payment_status = "Paid"
-            except stripe.error.StripeError as e:
-                stripe_cleanup_error = str(e)
-                frappe.log_error(
-                    f"Failed to void Stripe Invoice {pr.stripe_invoice_id} after manual payment: {stripe_cleanup_error}",
-                    "Stripe Invoice Void Error"
-                )
+            stripe_payment_status = close_stripe_invoice_after_external_payment(pr.stripe_invoice_id)
 
             frappe.db.set_value("Payment Request", pr.name, {
                 "status": "Paid",
                 "stripe_payment_status": stripe_payment_status
             }, update_modified=False)
 
-            if stripe_cleanup_error:
-                frappe.msgprint(
-                    f"Could not void Stripe Invoice {pr.stripe_invoice_id}: {stripe_cleanup_error}. Please void it manually in Stripe.",
-                    indicator="red", alert=True
-                )
-            else:
-                frappe.msgprint(
-                    f"Payment Request {pr.name} marked paid after Payment Entry {doc.name} was submitted.",
-                    indicator="green", alert=True
-                )
+            frappe.msgprint(
+                f"Payment Request {pr.name} marked paid after Payment Entry {doc.name} was submitted.",
+                indicator="green", alert=True
+            )
 
 
 def void_stripe_invoice_on_cancel(doc, method=None):
