@@ -567,18 +567,32 @@ def get_stripe_invoice_status(payment_request_name):
     
     try:
         invoice = stripe.Invoice.retrieve(doc.stripe_invoice_id)
+        status = get_stripe_object_value(invoice, "status")
         
         return {
-            "status": invoice.get("status"),
-            "amount_due": (invoice.get("amount_due") or 0) / 100,
-            "amount_paid": (invoice.get("amount_paid") or 0) / 100,
-            "currency": invoice.get("currency"),
-            "hosted_invoice_url": invoice.get("hosted_invoice_url"),
-            "paid": invoice.get("paid", invoice.get("status") == "paid")
+            "status": status,
+            "amount_due": (get_stripe_object_value(invoice, "amount_due") or 0) / 100,
+            "amount_paid": (get_stripe_object_value(invoice, "amount_paid") or 0) / 100,
+            "currency": get_stripe_object_value(invoice, "currency"),
+            "hosted_invoice_url": get_stripe_object_value(invoice, "hosted_invoice_url"),
+            "paid": get_stripe_object_value(invoice, "paid", status == "paid")
         }
         
     except stripe.error.StripeError as e:
         return {"status": "error", "error": str(e)}
+
+
+def get_stripe_object_value(obj, key, default=None):
+    """Read Stripe objects across SDK versions without assuming dict helpers."""
+    try:
+        return obj[key]
+    except (KeyError, TypeError):
+        pass
+
+    try:
+        return getattr(obj, key)
+    except AttributeError:
+        return default
 
 
 def void_stripe_invoice_on_manual_payment(doc, method=None):
