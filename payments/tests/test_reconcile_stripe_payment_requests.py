@@ -191,8 +191,8 @@ def test_reconciliation_recovers_pending_request_when_stripe_invoice_is_paid(mon
         outstanding_amount=40978.23,
         status="Requested",
         stripe_payment_status="Pending",
-        allow_card_payment=True,
-        card_processing_fee=1229.34,
+        allow_card_payment=False,
+        card_processing_fee=1229.35,
     )
     created = []
 

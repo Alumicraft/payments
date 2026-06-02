@@ -258,7 +258,7 @@ def handle_invoice_paid(event):
                 frappe.log_error(f"Failed to record Stripe fee: {str(e)}", "Stripe Webhook Error")
 
         # Record card fee income if customer paid surcharge
-        if payment_request.allow_card_payment and payment_request.card_processing_fee:
+        if payment_request.card_processing_fee:
             try:
                 income_entry = record_card_fee_income(payment_request, payment_request.card_processing_fee, invoice_id)
                 result["card_fee_journal_entry"] = income_entry
@@ -434,7 +434,7 @@ def handle_payment_intent_succeeded(event):
             except Exception as e:
                 frappe.log_error(f"Failed to record Stripe fee: {str(e)}", "Stripe Webhook Error")
 
-        if payment_request.allow_card_payment and payment_request.card_processing_fee:
+        if payment_request.card_processing_fee:
             try:
                 result["card_fee_journal_entry"] = record_card_fee_income(
                     payment_request, payment_request.card_processing_fee, invoice_id
@@ -564,9 +564,11 @@ def create_payment_entry(payment_request, invoice, stripe_fee=0):
     amount_paid = invoice.get('amount_paid', 0) / 100  # Convert from cents
     currency = invoice.get('currency', 'usd').upper()
 
-    # Exclude card fee — it's recorded separately as income via Journal Entry
-    if payment_request.allow_card_payment and payment_request.card_processing_fee:
-        amount_paid = amount_paid - float(payment_request.card_processing_fee)
+    # Exclude card fee — it's recorded separately as income via Journal Entry.
+    # Some submitted Payment Requests have the fee fields populated while the
+    # allow_card_payment checkbox is false, so the fee amount is the durable
+    # source of truth.
+    amount_paid = get_customer_payment_amount(payment_request, amount_paid)
 
     amount_paid = get_reference_allocation_amount(payment_request, amount_paid)
     
@@ -673,6 +675,15 @@ def get_receivable_account(company):
         )
 
     return account
+
+
+def get_customer_payment_amount(payment_request, amount_paid):
+    amount_paid = flt(amount_paid, 2)
+
+    if payment_request.card_processing_fee:
+        amount_paid -= flt(payment_request.card_processing_fee, 2)
+
+    return flt(amount_paid, 2)
 
 
 def get_reference_allocation_amount(payment_request, amount_paid):

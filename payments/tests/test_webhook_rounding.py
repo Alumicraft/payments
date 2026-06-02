@@ -120,6 +120,17 @@ def test_reference_allocation_ignores_sales_order_deposits(monkeypatch):
     assert amount == 100.00
 
 
+def test_customer_payment_amount_subtracts_recorded_card_fee_without_allow_flag(monkeypatch):
+    webhook = load_webhook(monkeypatch)
+
+    amount = webhook.get_customer_payment_amount(
+        SimpleNamespace(allow_card_payment=False, card_processing_fee=1229.35),
+        42207.57,
+    )
+
+    assert amount == 40978.22
+
+
 def test_payment_intent_invoice_id_uses_order_reference(monkeypatch):
     webhook = load_webhook(monkeypatch)
 

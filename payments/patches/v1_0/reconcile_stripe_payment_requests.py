@@ -2,7 +2,11 @@ import frappe
 from frappe.utils import flt
 
 from payments.utils import close_stripe_invoice_after_external_payment, get_stripe_settings
-from payments.webhook import create_payment_entry, get_payment_intent_invoice_id
+from payments.webhook import (
+    create_payment_entry,
+    get_customer_payment_amount,
+    get_payment_intent_invoice_id,
+)
 
 
 ROUNDING_TOLERANCE = 0.01
@@ -191,11 +195,10 @@ def find_matching_payment_intent(stripe, stripe_invoice):
 
 def stripe_payment_matches_invoice_balance(payment_request, stripe_invoice, invoice_outstanding):
     amount_paid = flt((stripe_invoice.get("amount_paid") or 0) / 100, 2)
+    amount_paid = get_customer_payment_amount(payment_request, amount_paid)
 
-    if payment_request.allow_card_payment and payment_request.card_processing_fee:
-        amount_paid -= flt(payment_request.card_processing_fee, 2)
-
-    return abs(flt(amount_paid, 2) - flt(invoice_outstanding, 2)) <= ROUNDING_TOLERANCE
+    difference = abs(flt(amount_paid, 2) - flt(invoice_outstanding, 2))
+    return flt(difference, 2) <= ROUNDING_TOLERANCE
 
 
 def stripe_object_to_dict(stripe_object):
