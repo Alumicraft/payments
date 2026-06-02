@@ -504,7 +504,7 @@ def find_payment_request(invoice):
 
 
 def payment_entry_exists_for_invoice(invoice):
-    """Return whether a non-cancelled Payment Entry exists for a Stripe invoice."""
+    """Return whether a submitted Payment Entry exists for a Stripe invoice."""
     return payment_entry_exists_for_reference(
         invoice.get('payment_intent') or invoice.get('id')
     )
@@ -516,7 +516,7 @@ def payment_entry_exists_for_payment_intent(payment_intent):
 
 
 def payment_entry_exists_for_reference(reference_no):
-    """Return whether a non-cancelled Payment Entry exists for a Stripe reference."""
+    """Return whether a submitted Payment Entry exists for a Stripe reference."""
     if not reference_no:
         return False
 
@@ -525,7 +525,7 @@ def payment_entry_exists_for_reference(reference_no):
             "Payment Entry",
             {
                 "reference_no": reference_no,
-                "docstatus": ["!=", 2],
+                "docstatus": 1,
             },
         )
     )
@@ -543,12 +543,14 @@ def create_payment_entry(payment_request, invoice, stripe_fee=0):
     Returns:
         Payment Entry document or None
     """
-    # Check if Payment Entry already exists (idempotency)
+    # Check if a submitted Payment Entry already exists (idempotency).
+    # Draft entries do not reduce Sales Invoice outstanding balances, so they
+    # must not block webhook/reconciliation recovery.
     existing = frappe.db.exists(
         "Payment Entry",
         {
             "reference_no": invoice.get('payment_intent') or invoice.get('id'),
-            "docstatus": ["!=", 2]  # Not cancelled
+            "docstatus": 1,
         }
     )
     if existing:

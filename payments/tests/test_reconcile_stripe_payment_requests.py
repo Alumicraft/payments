@@ -18,7 +18,7 @@ class FakeDB:
         assert doctype == "Payment Entry"
         assert filters == {
             "reference_no": ["in", ["in_1TbopE2LDx66zyddwQ9RyLdx"]],
-            "docstatus": ["!=", 2],
+            "docstatus": 1,
         }
         return False
 

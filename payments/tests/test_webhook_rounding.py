@@ -28,7 +28,7 @@ class FakeDB:
         if doctype == "Payment Entry":
             assert filters == {
                 "reference_no": "pi_123",
-                "docstatus": ["!=", 2],
+                "docstatus": 1,
             }
             return self.existing_payment_entry
 

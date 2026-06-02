@@ -217,7 +217,7 @@ def has_existing_payment_entry(payment_request):
             "Payment Entry",
             {
                 "reference_no": ["in", reference_numbers],
-                "docstatus": ["!=", 2],
+                "docstatus": 1,
             },
         )
     )
