@@ -56,8 +56,6 @@ def create_missing_entries_for_paid_requests(settings):
         "Payment Request",
         filters={
             "docstatus": 1,
-            "status": "Paid",
-            "stripe_payment_status": "Paid",
             "stripe_invoice_id": ["is", "set"],
             "reference_doctype": "Sales Invoice",
         },
@@ -67,6 +65,10 @@ def create_missing_entries_for_paid_requests(settings):
             "stripe_payment_intent_id",
             "reference_name",
             "grand_total",
+            "status",
+            "stripe_payment_status",
+            "allow_card_payment",
+            "card_processing_fee",
         ],
     )
 
@@ -80,9 +82,6 @@ def create_missing_entries_for_paid_requests(settings):
             if invoice_outstanding <= ROUNDING_TOLERANCE:
                 continue
 
-            if abs(invoice_outstanding - flt(row.grand_total, 2)) > ROUNDING_TOLERANCE:
-                continue
-
             if has_existing_payment_entry(row):
                 continue
 
@@ -94,18 +93,27 @@ def create_missing_entries_for_paid_requests(settings):
                 stripe_invoice = stripe_invoice.to_dict_recursive()
 
             stripe_invoice = add_missing_payment_intent(stripe, stripe_invoice)
+
+            if not stripe_payment_matches_invoice_balance(row, stripe_invoice, invoice_outstanding):
+                continue
+
             payment_request = frappe.get_doc("Payment Request", row.name)
             payment_entry = create_payment_entry(payment_request, stripe_invoice)
 
             payment_intent = stripe_invoice.get("payment_intent")
+            payment_request_updates = {
+                "status": "Paid",
+                "stripe_payment_status": "Paid",
+            }
             if payment_intent:
-                frappe.db.set_value(
-                    "Payment Request",
-                    row.name,
-                    "stripe_payment_intent_id",
-                    payment_intent,
-                    update_modified=False,
-                )
+                payment_request_updates["stripe_payment_intent_id"] = payment_intent
+
+            frappe.db.set_value(
+                "Payment Request",
+                row.name,
+                payment_request_updates,
+                update_modified=False,
+            )
 
             frappe.log_error(
                 f"Created missing Payment Entry {payment_entry.name if payment_entry else None} "
@@ -179,6 +187,15 @@ def find_matching_payment_intent(stripe, stripe_invoice):
         )
 
     return None
+
+
+def stripe_payment_matches_invoice_balance(payment_request, stripe_invoice, invoice_outstanding):
+    amount_paid = flt((stripe_invoice.get("amount_paid") or 0) / 100, 2)
+
+    if payment_request.allow_card_payment and payment_request.card_processing_fee:
+        amount_paid -= flt(payment_request.card_processing_fee, 2)
+
+    return abs(flt(amount_paid, 2) - flt(invoice_outstanding, 2)) <= ROUNDING_TOLERANCE
 
 
 def stripe_object_to_dict(stripe_object):

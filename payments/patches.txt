@@ -3,3 +3,4 @@ payments.patches.v1_0.reconcile_stripe_payment_requests
 payments.patches.v1_0.retry_missing_stripe_payment_entries
 payments.patches.v1_0.reconcile_paid_requests_with_missing_payment_intents
 payments.patches.v1_0.write_off_small_invoice_residuals
+payments.patches.v1_0.reconcile_pending_stripe_payment_requests
