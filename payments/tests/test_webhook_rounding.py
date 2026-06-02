@@ -7,12 +7,38 @@ from types import SimpleNamespace
 class FakeDB:
     def __init__(self, outstanding_amount=None):
         self.outstanding_amount = outstanding_amount
+        self.payment_request_name = None
+        self.existing_payment_entry = None
+        self.set_values = []
 
-    def get_value(self, doctype, name, fieldname):
-        assert doctype == "Sales Invoice"
-        assert name == "SINV-0001"
-        assert fieldname == "outstanding_amount"
-        return self.outstanding_amount
+    def get_value(self, doctype, name_or_filters, fieldname):
+        if doctype == "Sales Invoice":
+            assert name_or_filters == "SINV-0001"
+            assert fieldname == "outstanding_amount"
+            return self.outstanding_amount
+
+        if doctype == "Payment Request":
+            assert name_or_filters == {"stripe_invoice_id": "in_123"}
+            assert fieldname == "name"
+            return self.payment_request_name
+
+        raise AssertionError(f"Unexpected get_value: {doctype}, {name_or_filters}, {fieldname}")
+
+    def exists(self, doctype, filters):
+        if doctype == "Payment Entry":
+            assert filters == {
+                "reference_no": "pi_123",
+                "docstatus": ["!=", 2],
+            }
+            return self.existing_payment_entry
+
+        raise AssertionError(f"Unexpected exists: {doctype}, {filters}")
+
+    def set_value(self, doctype, name, values, update_modified=False):
+        self.set_values.append((doctype, name, values, update_modified))
+
+    def commit(self):
+        pass
 
 
 class FakeFrappe(types.ModuleType):
@@ -26,6 +52,24 @@ class FakeFrappe(types.ModuleType):
             return fn
 
         return decorator
+
+    def get_doc(self, doctype, name):
+        assert doctype == "Payment Request"
+        assert name == "PAY-REQ-0001"
+        return SimpleNamespace(
+            name=name,
+            stripe_payment_status="Paid",
+            status="Paid",
+            allow_card_payment=False,
+            card_processing_fee=0,
+        )
+
+    def get_single(self, doctype):
+        assert doctype == "Stripe Settings"
+        return SimpleNamespace(get_password=lambda fieldname: "sk_test")
+
+    def log_error(self, message, title=None):
+        pass
 
 
 def load_webhook(monkeypatch, outstanding_amount=None):
@@ -105,3 +149,48 @@ def test_payment_intent_invoice_id_prefers_invoice_field(monkeypatch):
     )
 
     assert invoice_id == "in_direct"
+
+
+def test_payment_intent_succeeded_creates_missing_entry_for_paid_request(monkeypatch):
+    webhook = load_webhook(monkeypatch)
+    webhook.frappe.db.payment_request_name = "PAY-REQ-0001"
+    created = []
+
+    class FakeInvoice:
+        @staticmethod
+        def retrieve(invoice_id):
+            assert invoice_id == "in_123"
+            return {
+                "id": invoice_id,
+                "payment_intent": "pi_123",
+                "amount_paid": 10000,
+                "currency": "usd",
+            }
+
+    monkeypatch.setitem(
+        sys.modules,
+        "stripe",
+        SimpleNamespace(Invoice=FakeInvoice),
+    )
+    monkeypatch.setattr(
+        webhook,
+        "create_payment_entry",
+        lambda payment_request, invoice, stripe_fee=0: created.append(
+            (payment_request.name, invoice["id"], stripe_fee)
+        )
+        or SimpleNamespace(name="ACC-PAY-0001"),
+    )
+
+    result = webhook.handle_payment_intent_succeeded(
+        {
+            "data": {
+                "object": {
+                    "id": "pi_123",
+                    "invoice": "in_123",
+                }
+            }
+        }
+    )
+
+    assert created == [("PAY-REQ-0001", "in_123", 0)]
+    assert result["payment_entry"] == "ACC-PAY-0001"

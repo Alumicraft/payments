@@ -140,6 +140,20 @@
             "label": "Stripe Bank Account",
             "options": "Account",
             "description": "Your Stripe balance/payout account"
+        },
+        {
+            "fieldname": "small_balance_write_off_account",
+            "fieldtype": "Link",
+            "label": "Small Balance Write-Off Account",
+            "options": "Account",
+            "description": "Account used to clear paid Sales Invoices with small residual balances"
+        },
+        {
+            "fieldname": "small_balance_write_off_limit",
+            "fieldtype": "Currency",
+            "label": "Small Balance Auto Write-Off Limit",
+            "default": 1,
+            "description": "Maximum positive Sales Invoice outstanding balance to auto-clear"
         }
     ],
     "permissions": [

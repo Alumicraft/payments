@@ -56,10 +56,9 @@ doctype_js = {
 
 # Scheduled Tasks
 scheduler_events = {
-    # Uncomment if you need periodic tasks
-    # "daily": [
-    #     "payments.tasks.daily_sync"
-    # ],
+    "daily": [
+        "payments.residuals.auto_write_off_small_sales_invoice_balances"
+    ],
 }
 
 # Jinja filters

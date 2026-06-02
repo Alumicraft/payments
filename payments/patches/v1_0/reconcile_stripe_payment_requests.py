@@ -2,7 +2,7 @@ import frappe
 from frappe.utils import flt
 
 from payments.utils import close_stripe_invoice_after_external_payment, get_stripe_settings
-from payments.webhook import create_payment_entry
+from payments.webhook import create_payment_entry, get_payment_intent_invoice_id
 
 
 ROUNDING_TOLERANCE = 0.01
@@ -93,6 +93,7 @@ def create_missing_entries_for_paid_requests(settings):
             if hasattr(stripe_invoice, "to_dict_recursive"):
                 stripe_invoice = stripe_invoice.to_dict_recursive()
 
+            stripe_invoice = add_missing_payment_intent(stripe, stripe_invoice)
             payment_request = frappe.get_doc("Payment Request", row.name)
             payment_entry = create_payment_entry(payment_request, stripe_invoice)
 
@@ -116,6 +117,86 @@ def create_missing_entries_for_paid_requests(settings):
                 f"Failed to create missing Payment Entry for Payment Request {row.name}: {str(e)}",
                 "Stripe Payment Request Reconciliation",
             )
+
+
+def add_missing_payment_intent(stripe, stripe_invoice):
+    """Attach a matching PaymentIntent ID when Stripe omits it from the invoice."""
+    if stripe_invoice.get("payment_intent"):
+        return stripe_invoice
+
+    payment_intent = find_matching_payment_intent(stripe, stripe_invoice)
+    if payment_intent:
+        stripe_invoice["payment_intent"] = payment_intent
+
+    return stripe_invoice
+
+
+def find_matching_payment_intent(stripe, stripe_invoice):
+    invoice_id = stripe_invoice.get("id")
+    customer = stripe_invoice.get("customer")
+    amount_paid = stripe_invoice.get("amount_paid")
+    currency = (stripe_invoice.get("currency") or "").lower()
+
+    if not customer or not amount_paid or not currency:
+        return None
+
+    list_args = {"customer": customer, "limit": 100}
+    if stripe_invoice.get("created"):
+        list_args["created"] = {"gte": stripe_invoice["created"]}
+
+    payment_intents = stripe.PaymentIntent.list(**list_args)
+    candidates = []
+
+    for payment_intent_obj in payment_intents.data:
+        payment_intent = stripe_object_to_dict(payment_intent_obj)
+
+        if payment_intent.get("status") != "succeeded":
+            continue
+
+        if payment_intent.get("amount") != amount_paid:
+            continue
+
+        if (payment_intent.get("currency") or "").lower() != currency:
+            continue
+
+        linked_invoice_id = get_payment_intent_invoice_id(payment_intent)
+        if linked_invoice_id == invoice_id:
+            return payment_intent.get("id")
+
+        if linked_invoice_id:
+            continue
+
+        candidates.append(payment_intent.get("id"))
+
+    candidates = [candidate for candidate in candidates if candidate]
+    if len(candidates) == 1:
+        return candidates[0]
+
+    if len(candidates) > 1:
+        frappe.log_error(
+            f"Found multiple matching PaymentIntents for Stripe Invoice {invoice_id}: {', '.join(candidates)}",
+            "Stripe Payment Request Reconciliation",
+        )
+
+    return None
+
+
+def stripe_object_to_dict(stripe_object):
+    if isinstance(stripe_object, dict):
+        return stripe_object
+
+    if hasattr(stripe_object, "to_dict_recursive"):
+        return stripe_object.to_dict_recursive()
+
+    return {
+        "id": getattr(stripe_object, "id", None),
+        "status": getattr(stripe_object, "status", None),
+        "amount": getattr(stripe_object, "amount", None),
+        "currency": getattr(stripe_object, "currency", None),
+        "invoice": getattr(stripe_object, "invoice", None),
+        "payment_details": getattr(stripe_object, "payment_details", None),
+        "metadata": getattr(stripe_object, "metadata", None),
+    }
 
 
 def has_existing_payment_entry(payment_request):

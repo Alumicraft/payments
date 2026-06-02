@@ -197,8 +197,9 @@ def handle_invoice_paid(event):
 
     payment_request = frappe.get_doc("Payment Request", payment_request_name)
 
-    # Check if already marked as paid
-    if payment_request.stripe_payment_status == "Paid":
+    # Check if already recorded in accounting. A prior webhook may have marked
+    # the request paid before Payment Entry creation completed.
+    if payment_request.stripe_payment_status == "Paid" and payment_entry_exists_for_invoice(invoice):
         return {"message": f"Payment Request {payment_request_name} already marked as paid"}
 
     # Don't overwrite Cancelled status — payment was collected but request was cancelled in ERPNext
@@ -370,8 +371,9 @@ def handle_payment_intent_succeeded(event):
     
     payment_request = frappe.get_doc("Payment Request", payment_request_name)
     
-    # Only process if not already paid (invoice.paid should have handled it)
-    if payment_request.stripe_payment_status == "Paid":
+    # Only skip if accounting is already complete. invoice.paid may have marked
+    # the request paid before Payment Entry creation completed.
+    if payment_request.stripe_payment_status == "Paid" and payment_entry_exists_for_payment_intent(payment_intent):
         return {"message": f"Payment Request {payment_request_name} already paid via invoice.paid event"}
 
     # Don't overwrite Cancelled status
@@ -498,6 +500,34 @@ def find_payment_request(invoice):
         "Payment Request",
         {"stripe_invoice_id": invoice_id},
         "name"
+    )
+
+
+def payment_entry_exists_for_invoice(invoice):
+    """Return whether a non-cancelled Payment Entry exists for a Stripe invoice."""
+    return payment_entry_exists_for_reference(
+        invoice.get('payment_intent') or invoice.get('id')
+    )
+
+
+def payment_entry_exists_for_payment_intent(payment_intent):
+    """Return whether a non-cancelled Payment Entry exists for a Stripe PaymentIntent."""
+    return payment_entry_exists_for_reference(payment_intent.get('id'))
+
+
+def payment_entry_exists_for_reference(reference_no):
+    """Return whether a non-cancelled Payment Entry exists for a Stripe reference."""
+    if not reference_no:
+        return False
+
+    return bool(
+        frappe.db.exists(
+            "Payment Entry",
+            {
+                "reference_no": reference_no,
+                "docstatus": ["!=", 2],
+            },
+        )
     )
 
 
