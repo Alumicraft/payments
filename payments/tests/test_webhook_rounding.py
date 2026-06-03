@@ -96,6 +96,14 @@ def payment_request(reference_doctype="Sales Invoice"):
     )
 
 
+class StripeLikeObject:
+    def __init__(self, **kwargs):
+        self.__dict__.update(kwargs)
+
+    def __getattr__(self, name):
+        raise AttributeError(name)
+
+
 def test_reference_allocation_snaps_one_cent_residual(monkeypatch):
     webhook = load_webhook(monkeypatch, outstanding_amount=546.06)
 
@@ -141,6 +149,21 @@ def test_payment_intent_invoice_id_uses_order_reference(monkeypatch):
                 "order_reference": "in_123",
             },
         }
+    )
+
+    assert invoice_id == "in_123"
+
+
+def test_payment_intent_invoice_id_handles_stripe_object_values(monkeypatch):
+    webhook = load_webhook(monkeypatch)
+
+    invoice_id = webhook.get_payment_intent_invoice_id(
+        StripeLikeObject(
+            id="pi_123",
+            invoice=None,
+            payment_details=StripeLikeObject(order_reference="in_123"),
+            metadata=StripeLikeObject(),
+        )
     )
 
     assert invoice_id == "in_123"

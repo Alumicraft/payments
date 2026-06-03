@@ -464,17 +464,24 @@ def get_payment_intent_invoice_id(payment_intent):
     event payload. In that shape, Stripe sends the invoice reference under
     payment_details.order_reference.
     """
-    invoice_id = payment_intent.get('invoice')
+    invoice_id = object_get(payment_intent, 'invoice')
     if invoice_id:
         return invoice_id
 
-    payment_details = payment_intent.get('payment_details') or {}
-    invoice_id = payment_details.get('order_reference')
+    payment_details = object_get(payment_intent, 'payment_details') or {}
+    invoice_id = object_get(payment_details, 'order_reference')
     if invoice_id:
         return invoice_id
 
-    metadata = payment_intent.get('metadata') or {}
-    return metadata.get('invoice') or metadata.get('stripe_invoice_id')
+    metadata = object_get(payment_intent, 'metadata') or {}
+    return object_get(metadata, 'invoice') or object_get(metadata, 'stripe_invoice_id')
+
+
+def object_get(value, fieldname, default=None):
+    if isinstance(value, dict):
+        return value.get(fieldname, default)
+
+    return getattr(value, fieldname, default)
 
 
 def find_payment_request(invoice):
