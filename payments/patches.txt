@@ -6,3 +6,4 @@ payments.patches.v1_0.write_off_small_invoice_residuals
 payments.patches.v1_0.reconcile_pending_stripe_payment_requests
 payments.patches.v1_0.reconcile_card_fee_stripe_payment_requests
 payments.patches.v1_0.reconcile_stripe_object_payment_requests
+payments.patches.v1_0.reconcile_stripe_invoice_object_payment_requests

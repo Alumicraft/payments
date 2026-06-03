@@ -93,8 +93,7 @@ def create_missing_entries_for_paid_requests(settings):
             if getattr(stripe_invoice, "status", None) != "paid":
                 continue
 
-            if hasattr(stripe_invoice, "to_dict_recursive"):
-                stripe_invoice = stripe_invoice.to_dict_recursive()
+            stripe_invoice = stripe_object_to_dict(stripe_invoice)
 
             stripe_invoice = add_missing_payment_intent(stripe, stripe_invoice)
 
@@ -211,9 +210,14 @@ def stripe_object_to_dict(stripe_object):
     return {
         "id": getattr(stripe_object, "id", None),
         "status": getattr(stripe_object, "status", None),
+        "amount_paid": getattr(stripe_object, "amount_paid", None),
         "amount": getattr(stripe_object, "amount", None),
         "currency": getattr(stripe_object, "currency", None),
+        "customer": getattr(stripe_object, "customer", None),
+        "created": getattr(stripe_object, "created", None),
         "invoice": getattr(stripe_object, "invoice", None),
+        "payment_intent": getattr(stripe_object, "payment_intent", None),
+        "charge": getattr(stripe_object, "charge", None),
         "payment_details": getattr(stripe_object, "payment_details", None),
         "metadata": getattr(stripe_object, "metadata", None),
     }
