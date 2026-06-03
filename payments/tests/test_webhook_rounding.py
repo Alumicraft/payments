@@ -112,6 +112,14 @@ def test_reference_allocation_snaps_one_cent_residual(monkeypatch):
     assert amount == 546.06
 
 
+def test_reference_allocation_snaps_live_card_fee_cent_residual(monkeypatch):
+    webhook = load_webhook(monkeypatch, outstanding_amount=40978.23)
+
+    amount = webhook.get_reference_allocation_amount(payment_request(), 40978.22)
+
+    assert amount == 40978.23
+
+
 def test_reference_allocation_does_not_hide_larger_underpayment(monkeypatch):
     webhook = load_webhook(monkeypatch, outstanding_amount=546.06)
 

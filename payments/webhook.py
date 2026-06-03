@@ -719,7 +719,8 @@ def get_reference_allocation_amount(payment_request, amount_paid):
         return amount_paid
 
     outstanding_amount = flt(outstanding_amount, 2)
-    if outstanding_amount > 0 and abs(outstanding_amount - amount_paid) <= ROUNDING_TOLERANCE:
+    difference = flt(abs(outstanding_amount - amount_paid), 2)
+    if outstanding_amount > 0 and difference <= ROUNDING_TOLERANCE:
         return outstanding_amount
 
     return amount_paid
