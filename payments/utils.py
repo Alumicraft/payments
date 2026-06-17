@@ -9,10 +9,22 @@ import json
 
 # Rate limiting: Minimum seconds between invoice creation attempts
 RATE_LIMIT_SECONDS = 5
+SYNCABLE_EXTERNAL_PAYMENT_STATUSES = ("Pending", "N/A", "")
 
 
 def to_currency_float(value):
     return round(float(value or 0), 2)
+
+
+def should_sync_external_payment_status(stripe_payment_status):
+    return not stripe_payment_status or stripe_payment_status in SYNCABLE_EXTERNAL_PAYMENT_STATUSES
+
+
+def get_payment_status_after_external_payment(stripe_invoice_id=None):
+    if stripe_invoice_id:
+        return close_stripe_invoice_after_external_payment(stripe_invoice_id)
+
+    return "Paid"
 
 
 def create_stripe_invoice(doc, method=None):
@@ -100,10 +112,11 @@ def sync_paid_payment_request_status(doc):
         doc.docstatus == 1
         and doc.status == "Paid"
         and (not hasattr(doc, "outstanding_amount") or doc.outstanding_amount == 0)
-        and doc.stripe_invoice_id
-        and doc.stripe_payment_status == "Pending"
+        and should_sync_external_payment_status(getattr(doc, "stripe_payment_status", None))
     ):
-        stripe_payment_status = close_stripe_invoice_after_external_payment(doc.stripe_invoice_id)
+        stripe_payment_status = get_payment_status_after_external_payment(
+            getattr(doc, "stripe_invoice_id", None)
+        )
         doc.db_set("stripe_payment_status", stripe_payment_status, update_modified=False)
 
 
@@ -671,7 +684,7 @@ def void_stripe_invoice_on_manual_payment(doc, method=None):
     Void open Stripe Invoices when a Payment Entry is manually submitted.
     Triggered by on_submit hook on Payment Entry.
 
-    Checks if any linked Payment Request has a pending Stripe invoice and marks
+    Checks if any linked Payment Request has an unresolved payment status and marks
     the request paid because ERPNext has a submitted Payment Entry. Stripe invoice
     cleanup is best-effort and should not be the only path that updates the
     Payment Request status.
@@ -683,18 +696,21 @@ def void_stripe_invoice_on_manual_payment(doc, method=None):
             filters={
                 "reference_doctype": ref.reference_doctype,
                 "reference_name": ref.reference_name,
-                "stripe_invoice_id": ["is", "set"],
-                "stripe_payment_status": "Pending",
                 "docstatus": 1
             },
-            fields=["name", "stripe_invoice_id"]
+            fields=["name", "stripe_invoice_id", "stripe_payment_status"]
         )
 
         if not payment_requests:
             continue
 
         for pr in payment_requests:
-            stripe_payment_status = close_stripe_invoice_after_external_payment(pr.stripe_invoice_id)
+            if not should_sync_external_payment_status(getattr(pr, "stripe_payment_status", None)):
+                continue
+
+            stripe_payment_status = get_payment_status_after_external_payment(
+                getattr(pr, "stripe_invoice_id", None)
+            )
 
             frappe.db.set_value("Payment Request", pr.name, {
                 "status": "Paid",
