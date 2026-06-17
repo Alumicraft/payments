@@ -15,6 +15,7 @@ class FakeDB:
         self.sql_values = []
         self.reference_projects = {}
         self.project_payment_requests = []
+        self.unallocated_payment_requests = []
 
     def set_value(self, doctype, name, values, update_modified=False):
         self.values.append((doctype, name, values, update_modified))
@@ -23,6 +24,8 @@ class FakeDB:
         self.sql_queries.append(query)
         self.sql_values.append(values)
         assert as_dict is True
+        if "pr.party_type = %(party_type)s" in query:
+            return self.unallocated_payment_requests
         return self.project_payment_requests
 
     def get_value(self, doctype, name, fieldname, **kwargs):
@@ -308,6 +311,49 @@ def test_submitted_invoice_payment_marks_matching_sales_order_request_paid(monke
         (
             "Payment Request",
             "PAY-REQ-SO",
+            {"status": "Paid", "stripe_payment_status": "Paid"},
+            False,
+        )
+    ]
+
+
+def test_submitted_unallocated_customer_payment_marks_matching_sales_order_request_paid(monkeypatch):
+    utils, fake_frappe, fake_stripe = load_utils(monkeypatch, "paid", settings=None)
+    fake_frappe.db.unallocated_payment_requests = [
+        SimpleNamespace(
+            name="PAY-REQ-ELL",
+            status="Requested",
+            stripe_invoice_id=None,
+            stripe_payment_status="Pending",
+        )
+    ]
+    doc = SimpleNamespace(
+        name="ACC-PAY-2026-53185",
+        party_type="Customer",
+        party="Chris Ellen",
+        paid_amount=22800,
+        total_allocated_amount=0,
+        unallocated_amount=22800,
+        posting_date="2026-03-23",
+        references=[],
+    )
+
+    utils.void_stripe_invoice_on_manual_payment(doc)
+
+    assert fake_frappe.db.sql_values == [
+        {
+            "party_type": "Customer",
+            "party": "Chris Ellen",
+            "posting_date": "2026-03-23",
+            "unallocated_amount": 22800.0,
+            "upper_bound_multiplier": 1.1,
+            "tolerance": 0.01,
+        }
+    ]
+    assert fake_frappe.db.values == [
+        (
+            "Payment Request",
+            "PAY-REQ-ELL",
             {"status": "Paid", "stripe_payment_status": "Paid"},
             False,
         )

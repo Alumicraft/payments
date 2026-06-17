@@ -18,10 +18,16 @@ class FakeDB:
         ]
         self.project_payment_requests = []
         self.project_payment_entries = []
+        self.unallocated_payment_requests = []
+        self.unallocated_payment_entries = []
 
     def sql(self, query, values=None, as_dict=False):
         self.queries.append((query, values, as_dict))
         assert as_dict is True
+        if "pe.payment_type = 'Receive'" in query:
+            return self.unallocated_payment_entries
+        if "pr.party_type = 'Customer'" in query:
+            return self.unallocated_payment_requests
         if "from `tabPayment Entry` pe" in query:
             return self.project_payment_entries
         if "coalesce(nullif(pr.project" in query:
@@ -124,3 +130,32 @@ def test_patch_skips_sales_order_request_without_matching_project_payment(monkey
     patch.execute()
 
     assert fake_frappe.db.values == []
+
+
+def test_patch_marks_sales_order_request_paid_from_unallocated_customer_payment(monkeypatch):
+    patch, fake_frappe = load_patch(monkeypatch)
+    fake_frappe.db.exact_payment_requests = []
+    fake_frappe.db.unallocated_payment_requests = [
+        SimpleNamespace(
+            name="PAY-REQ-ELL",
+            status="Requested",
+            stripe_invoice_id=None,
+            stripe_payment_status="Pending",
+            grand_total=21196.56,
+            party_type="Customer",
+            party="Chris Ellen",
+            transaction_date="2026-03-04",
+        )
+    ]
+    fake_frappe.db.unallocated_payment_entries = [SimpleNamespace(name="PAY-ENTRY-CHECK")]
+
+    patch.execute()
+
+    assert fake_frappe.db.values == [
+        (
+            "Payment Request",
+            "PAY-REQ-ELL",
+            {"status": "Paid", "stripe_payment_status": "Paid"},
+            False,
+        )
+    ]

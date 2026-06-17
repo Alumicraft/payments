@@ -11,6 +11,7 @@ import json
 RATE_LIMIT_SECONDS = 5
 SYNCABLE_EXTERNAL_PAYMENT_STATUSES = ("Pending", "N/A", "")
 PAYMENT_REQUEST_AMOUNT_TOLERANCE = 0.01
+UNALLOCATED_PAYMENT_AMOUNT_OVERAGE_RATE = 0.10
 
 
 def to_currency_float(value):
@@ -692,8 +693,10 @@ def void_stripe_invoice_on_manual_payment(doc, method=None):
     """
     synced_payment_requests = set()
 
+    payment_entry_references = getattr(doc, "references", []) or []
+
     # Check each reference in the Payment Entry for linked Payment Requests
-    for ref in doc.references:
+    for ref in payment_entry_references:
         for pr in get_exact_reference_payment_requests(ref):
             if mark_payment_request_paid_after_payment_entry(pr, doc.name, synced_payment_requests):
                 synced_payment_requests.add(pr.name)
@@ -703,6 +706,11 @@ def void_stripe_invoice_on_manual_payment(doc, method=None):
         for pr in get_project_amount_payment_requests(reference_project, reference_amount):
             if mark_payment_request_paid_after_payment_entry(pr, doc.name, synced_payment_requests):
                 synced_payment_requests.add(pr.name)
+
+    unallocated_amount = get_payment_entry_unallocated_amount(doc, payment_entry_references)
+    for pr in get_unallocated_party_payment_requests(doc, unallocated_amount):
+        if mark_payment_request_paid_after_payment_entry(pr, doc.name, synced_payment_requests):
+            synced_payment_requests.add(pr.name)
 
 
 def get_exact_reference_payment_requests(ref):
@@ -723,6 +731,24 @@ def get_payment_entry_reference_amount(ref, doc):
         return to_currency_float(allocated_amount)
 
     return to_currency_float(getattr(doc, "paid_amount", None))
+
+
+def get_payment_entry_unallocated_amount(doc, payment_entry_references):
+    unallocated_amount = getattr(doc, "unallocated_amount", None)
+    if unallocated_amount is not None:
+        return to_currency_float(unallocated_amount)
+
+    total_allocated_amount = getattr(doc, "total_allocated_amount", None)
+    if total_allocated_amount is None:
+        total_allocated_amount = sum(
+            to_currency_float(getattr(ref, "allocated_amount", None))
+            for ref in payment_entry_references
+        )
+
+    return max(
+        to_currency_float(getattr(doc, "paid_amount", None)) - to_currency_float(total_allocated_amount),
+        0,
+    )
 
 
 def get_payment_entry_reference_project(ref):
@@ -761,6 +787,53 @@ def get_project_amount_payment_requests(project, amount):
         {
             "project": project,
             "amount": amount,
+            "tolerance": PAYMENT_REQUEST_AMOUNT_TOLERANCE,
+        },
+        as_dict=True,
+    )
+
+
+def get_unallocated_party_payment_requests(doc, unallocated_amount):
+    if (
+        not unallocated_amount
+        or getattr(doc, "party_type", None) != "Customer"
+        or not getattr(doc, "party", None)
+    ):
+        return []
+
+    return frappe.db.sql(
+        """
+        select
+            pr.name,
+            pr.status,
+            pr.stripe_invoice_id,
+            pr.stripe_payment_status
+        from `tabPayment Request` pr
+        inner join `tabSales Order` so
+            on pr.reference_doctype = 'Sales Order'
+            and pr.reference_name = so.name
+        where pr.docstatus = 1
+          and pr.party_type = %(party_type)s
+          and pr.party = %(party)s
+          and ifnull(pr.grand_total, 0) > 0
+          and %(unallocated_amount)s + %(tolerance)s >= ifnull(pr.grand_total, 0)
+          and %(unallocated_amount)s <= ifnull(pr.grand_total, 0) * %(upper_bound_multiplier)s + %(tolerance)s
+          and (
+              ifnull(pr.status, '') != 'Paid'
+              or ifnull(pr.stripe_payment_status, '') in ('Pending', 'N/A', '')
+          )
+          and (
+              %(posting_date)s is null
+              or so.transaction_date is null
+              or %(posting_date)s >= so.transaction_date
+          )
+        """,
+        {
+            "party_type": getattr(doc, "party_type", None),
+            "party": getattr(doc, "party", None),
+            "posting_date": getattr(doc, "posting_date", None),
+            "unallocated_amount": unallocated_amount,
+            "upper_bound_multiplier": 1 + UNALLOCATED_PAYMENT_AMOUNT_OVERAGE_RATE,
             "tolerance": PAYMENT_REQUEST_AMOUNT_TOLERANCE,
         },
         as_dict=True,

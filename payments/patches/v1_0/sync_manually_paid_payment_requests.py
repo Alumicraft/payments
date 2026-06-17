@@ -2,6 +2,7 @@ import frappe
 
 from payments.utils import (
     PAYMENT_REQUEST_AMOUNT_TOLERANCE,
+    UNALLOCATED_PAYMENT_AMOUNT_OVERAGE_RATE,
     get_payment_status_after_external_payment,
     should_sync_external_payment_status,
     to_currency_float,
@@ -12,6 +13,7 @@ def execute():
     """Repair Payment Requests that already have matching submitted Payment Entries."""
     sync_exact_reference_payment_requests()
     sync_project_amount_payment_requests()
+    sync_unallocated_party_payment_requests()
 
 
 def sync_exact_reference_payment_requests():
@@ -135,6 +137,84 @@ def has_project_amount_payment_entry(project, amount):
             "project": project,
             "project_like": f"%{project}%",
             "amount": amount,
+            "tolerance": PAYMENT_REQUEST_AMOUNT_TOLERANCE,
+        },
+        as_dict=True,
+    )
+
+    return bool(payment_entries)
+
+
+def sync_unallocated_party_payment_requests():
+    """
+    Repair Sales Order requests paid by unallocated customer advances.
+
+    Some imported/manual Payment Entries are submitted against the customer with
+    no reference rows. Same party plus a close amount keeps this repair scoped.
+    """
+    payment_requests = frappe.db.sql(
+        """
+        select
+            pr.name,
+            pr.status,
+            pr.stripe_invoice_id,
+            pr.stripe_payment_status,
+            pr.grand_total,
+            pr.party_type,
+            pr.party,
+            so.transaction_date
+        from `tabPayment Request` pr
+        inner join `tabSales Order` so
+            on pr.reference_doctype = 'Sales Order'
+            and pr.reference_name = so.name
+        where pr.docstatus = 1
+          and pr.party_type = 'Customer'
+          and ifnull(pr.party, '') != ''
+          and ifnull(pr.grand_total, 0) > 0
+          and (
+              ifnull(pr.status, '') != 'Paid'
+              or ifnull(pr.stripe_payment_status, '') in ('Pending', 'N/A', '')
+          )
+        """,
+        as_dict=True,
+    )
+
+    for payment_request in payment_requests:
+        if not has_unallocated_party_payment_entry(payment_request):
+            continue
+
+        mark_payment_request_paid(payment_request)
+
+
+def has_unallocated_party_payment_entry(payment_request):
+    amount = to_currency_float(payment_request.grand_total)
+    if amount <= 0:
+        return False
+
+    payment_entries = frappe.db.sql(
+        """
+        select pe.name
+        from `tabPayment Entry` pe
+        where pe.docstatus = 1
+          and pe.payment_type = 'Receive'
+          and pe.party_type = %(party_type)s
+          and pe.party = %(party)s
+          and ifnull(pe.total_allocated_amount, 0) = 0
+          and ifnull(pe.paid_amount, 0) + %(tolerance)s >= %(amount)s
+          and ifnull(pe.paid_amount, 0) <= %(amount_upper_bound)s + %(tolerance)s
+          and (
+              %(transaction_date)s is null
+              or pe.posting_date is null
+              or pe.posting_date >= %(transaction_date)s
+          )
+        limit 1
+        """,
+        {
+            "party_type": payment_request.party_type,
+            "party": payment_request.party,
+            "transaction_date": payment_request.transaction_date,
+            "amount": amount,
+            "amount_upper_bound": amount * (1 + UNALLOCATED_PAYMENT_AMOUNT_OVERAGE_RATE),
             "tolerance": PAYMENT_REQUEST_AMOUNT_TOLERANCE,
         },
         as_dict=True,
