@@ -9,3 +9,4 @@ payments.patches.v1_0.reconcile_stripe_object_payment_requests
 payments.patches.v1_0.reconcile_stripe_invoice_object_payment_requests
 payments.patches.v1_0.write_off_remaining_small_invoice_residuals
 payments.patches.v1_0.sync_manually_paid_payment_requests
+payments.patches.v1_0.sync_project_paid_payment_requests

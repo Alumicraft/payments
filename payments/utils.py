@@ -10,6 +10,7 @@ import json
 # Rate limiting: Minimum seconds between invoice creation attempts
 RATE_LIMIT_SECONDS = 5
 SYNCABLE_EXTERNAL_PAYMENT_STATUSES = ("Pending", "N/A", "")
+PAYMENT_REQUEST_AMOUNT_TOLERANCE = 0.01
 
 
 def to_currency_float(value):
@@ -689,38 +690,107 @@ def void_stripe_invoice_on_manual_payment(doc, method=None):
     cleanup is best-effort and should not be the only path that updates the
     Payment Request status.
     """
+    synced_payment_requests = set()
+
     # Check each reference in the Payment Entry for linked Payment Requests
     for ref in doc.references:
-        payment_requests = frappe.get_all(
-            "Payment Request",
-            filters={
-                "reference_doctype": ref.reference_doctype,
-                "reference_name": ref.reference_name,
-                "docstatus": 1
-            },
-            fields=["name", "stripe_invoice_id", "stripe_payment_status"]
+        for pr in get_exact_reference_payment_requests(ref):
+            if mark_payment_request_paid_after_payment_entry(pr, doc.name, synced_payment_requests):
+                synced_payment_requests.add(pr.name)
+
+        reference_amount = get_payment_entry_reference_amount(ref, doc)
+        reference_project = get_payment_entry_reference_project(ref)
+        for pr in get_project_amount_payment_requests(reference_project, reference_amount):
+            if mark_payment_request_paid_after_payment_entry(pr, doc.name, synced_payment_requests):
+                synced_payment_requests.add(pr.name)
+
+
+def get_exact_reference_payment_requests(ref):
+    return frappe.get_all(
+        "Payment Request",
+        filters={
+            "reference_doctype": ref.reference_doctype,
+            "reference_name": ref.reference_name,
+            "docstatus": 1,
+        },
+        fields=["name", "status", "stripe_invoice_id", "stripe_payment_status"],
+    )
+
+
+def get_payment_entry_reference_amount(ref, doc):
+    allocated_amount = getattr(ref, "allocated_amount", None)
+    if allocated_amount is not None:
+        return to_currency_float(allocated_amount)
+
+    return to_currency_float(getattr(doc, "paid_amount", None))
+
+
+def get_payment_entry_reference_project(ref):
+    if ref.reference_doctype not in ("Sales Invoice", "Sales Order"):
+        return None
+
+    return frappe.db.get_value(ref.reference_doctype, ref.reference_name, "project")
+
+
+def get_project_amount_payment_requests(project, amount):
+    if not project or not amount:
+        return []
+
+    return frappe.db.sql(
+        """
+        select
+            pr.name,
+            pr.status,
+            pr.stripe_invoice_id,
+            pr.stripe_payment_status
+        from `tabPayment Request` pr
+        left join `tabSales Invoice` si
+            on pr.reference_doctype = 'Sales Invoice'
+            and pr.reference_name = si.name
+        left join `tabSales Order` so
+            on pr.reference_doctype = 'Sales Order'
+            and pr.reference_name = so.name
+        where pr.docstatus = 1
+          and abs(ifnull(pr.grand_total, 0) - %(amount)s) <= %(tolerance)s
+          and coalesce(nullif(pr.project, ''), nullif(si.project, ''), nullif(so.project, '')) = %(project)s
+          and (
+              ifnull(pr.status, '') != 'Paid'
+              or ifnull(pr.stripe_payment_status, '') in ('Pending', 'N/A', '')
+          )
+        """,
+        {
+            "project": project,
+            "amount": amount,
+            "tolerance": PAYMENT_REQUEST_AMOUNT_TOLERANCE,
+        },
+        as_dict=True,
+    )
+
+
+def mark_payment_request_paid_after_payment_entry(pr, payment_entry_name, synced_payment_requests):
+    if pr.name in synced_payment_requests:
+        return False
+
+    stripe_payment_status = getattr(pr, "stripe_payment_status", None)
+    if getattr(pr, "status", None) == "Paid" and not should_sync_external_payment_status(
+        stripe_payment_status
+    ):
+        return False
+
+    values = {"status": "Paid"}
+    if should_sync_external_payment_status(stripe_payment_status):
+        values["stripe_payment_status"] = get_payment_status_after_external_payment(
+            getattr(pr, "stripe_invoice_id", None)
         )
 
-        if not payment_requests:
-            continue
+    frappe.db.set_value("Payment Request", pr.name, values, update_modified=False)
 
-        for pr in payment_requests:
-            if not should_sync_external_payment_status(getattr(pr, "stripe_payment_status", None)):
-                continue
-
-            stripe_payment_status = get_payment_status_after_external_payment(
-                getattr(pr, "stripe_invoice_id", None)
-            )
-
-            frappe.db.set_value("Payment Request", pr.name, {
-                "status": "Paid",
-                "stripe_payment_status": stripe_payment_status
-            }, update_modified=False)
-
-            frappe.msgprint(
-                f"Payment Request {pr.name} marked paid after Payment Entry {doc.name} was submitted.",
-                indicator="green", alert=True
-            )
+    frappe.msgprint(
+        f"Payment Request {pr.name} marked paid after Payment Entry {payment_entry_name} was submitted.",
+        indicator="green",
+        alert=True,
+    )
+    return True
 
 
 def void_stripe_invoice_on_cancel(doc, method=None):

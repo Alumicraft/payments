@@ -12,12 +12,22 @@ class FakeDB:
     def __init__(self):
         self.values = []
         self.sql_queries = []
+        self.sql_values = []
+        self.reference_projects = {}
+        self.project_payment_requests = []
 
     def set_value(self, doctype, name, values, update_modified=False):
         self.values.append((doctype, name, values, update_modified))
 
-    def sql(self, query):
+    def sql(self, query, values=None, as_dict=False):
         self.sql_queries.append(query)
+        self.sql_values.append(values)
+        assert as_dict is True
+        return self.project_payment_requests
+
+    def get_value(self, doctype, name, fieldname, **kwargs):
+        assert fieldname == "project"
+        return self.reference_projects.get((doctype, name))
 
 
 class FakeFrappe(types.ModuleType):
@@ -95,6 +105,7 @@ def load_utils(monkeypatch, invoice_status="paid", settings=None):
 def payment_entry():
     return SimpleNamespace(
         name="ACC-PAY-2026-00001",
+        paid_amount=0,
         references=[
             SimpleNamespace(
                 reference_doctype="Sales Invoice",
@@ -255,6 +266,48 @@ def test_submitted_payment_entry_marks_request_paid_without_stripe_settings(monk
         (
             "Payment Request",
             "PAY-REQ-0003",
+            {"status": "Paid", "stripe_payment_status": "Paid"},
+            False,
+        )
+    ]
+
+
+def test_submitted_invoice_payment_marks_matching_sales_order_request_paid(monkeypatch):
+    utils, fake_frappe, fake_stripe = load_utils(monkeypatch, "paid", settings=None)
+    fake_frappe.db.reference_projects[("Sales Invoice", "SINV-0001")] = "GAR100326"
+    fake_frappe.db.project_payment_requests = [
+        SimpleNamespace(
+            name="PAY-REQ-SO",
+            status="Requested",
+            stripe_invoice_id=None,
+            stripe_payment_status="Pending",
+        )
+    ]
+    doc = SimpleNamespace(
+        name="ACC-PAY-2026-00001",
+        paid_amount=0,
+        references=[
+            SimpleNamespace(
+                reference_doctype="Sales Invoice",
+                reference_name="SINV-0001",
+                allocated_amount=1595,
+            )
+        ],
+    )
+
+    utils.void_stripe_invoice_on_manual_payment(doc)
+
+    assert fake_frappe.db.sql_values == [
+        {
+            "project": "GAR100326",
+            "amount": 1595.0,
+            "tolerance": 0.01,
+        }
+    ]
+    assert fake_frappe.db.values == [
+        (
+            "Payment Request",
+            "PAY-REQ-SO",
             {"status": "Paid", "stripe_payment_status": "Paid"},
             False,
         )
