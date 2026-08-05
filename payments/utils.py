@@ -18,6 +18,11 @@ def to_currency_float(value):
     return round(float(value or 0), 2)
 
 
+def to_stripe_minor_units(value):
+    """Convert the app's two-decimal currency amounts to Stripe minor units."""
+    return int(round(to_currency_float(value) * 100))
+
+
 def should_sync_external_payment_status(stripe_payment_status):
     return not stripe_payment_status or stripe_payment_status in SYNCABLE_EXTERNAL_PAYMENT_STATUSES
 
@@ -248,7 +253,7 @@ def _create_stripe_invoice_internal(doc):
         stripe.InvoiceItem.create(
             customer=stripe_customer_id,
             invoice=invoice.id,
-            amount=int(base_amount * 100),  # Convert to cents
+            amount=to_stripe_minor_units(base_amount),
             currency=currency,
             description=f"Payment for {doc.reference_name}" if doc.reference_name else description,
             metadata={'erpnext_invoice_number': doc.reference_name or ''}
@@ -260,7 +265,7 @@ def _create_stripe_invoice_internal(doc):
             stripe.InvoiceItem.create(
                 customer=stripe_customer_id,
                 invoice=invoice.id,
-                amount=int(doc.card_processing_fee * 100),  # Convert to cents
+                amount=to_stripe_minor_units(doc.card_processing_fee),
                 currency=currency,
                 description=f"Card Processing Fee ({fee_percent}%)",
                 metadata={'fee_type': 'card_processing_fee'}
@@ -703,14 +708,41 @@ def void_stripe_invoice_on_manual_payment(doc, method=None):
 
         reference_amount = get_payment_entry_reference_amount(ref, doc)
         reference_project = get_payment_entry_reference_project(ref)
-        for pr in get_project_amount_payment_requests(reference_project, reference_amount):
+        project_matches = require_unambiguous_fallback_match(
+            get_project_amount_payment_requests(reference_project, reference_amount),
+            "project and amount",
+            doc.name,
+        )
+        for pr in project_matches:
             if mark_payment_request_paid_after_payment_entry(pr, doc.name, synced_payment_requests):
                 synced_payment_requests.add(pr.name)
 
     unallocated_amount = get_payment_entry_unallocated_amount(doc, payment_entry_references)
-    for pr in get_unallocated_party_payment_requests(doc, unallocated_amount):
+    unallocated_matches = require_unambiguous_fallback_match(
+        get_unallocated_party_payment_requests(doc, unallocated_amount),
+        "customer and unallocated amount",
+        doc.name,
+    )
+    for pr in unallocated_matches:
         if mark_payment_request_paid_after_payment_entry(pr, doc.name, synced_payment_requests):
             synced_payment_requests.add(pr.name)
+
+
+def require_unambiguous_fallback_match(payment_requests, match_type, payment_entry_name):
+    """Return a fallback match only when it identifies one Payment Request."""
+    if len(payment_requests) <= 1:
+        return payment_requests
+
+    candidate_names = ", ".join(sorted(pr.name for pr in payment_requests))
+    frappe.log_error(
+        (
+            f"Payment Entry {payment_entry_name} matched multiple Payment Requests "
+            f"by {match_type}; no request was marked paid automatically. "
+            f"Candidates: {candidate_names}"
+        ),
+        "Ambiguous Payment Request Match",
+    )
+    return []
 
 
 def get_exact_reference_payment_requests(ref):

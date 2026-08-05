@@ -39,8 +39,8 @@
             "fieldname": "status",
             "fieldtype": "Select",
             "label": "Status",
-            "options": "Success\nFailed",
-            "default": "Success",
+            "options": "Processing\nSuccess\nFailed",
+            "default": "Processing",
             "in_list_view": 1
         },
         {

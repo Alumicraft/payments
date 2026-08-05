@@ -118,6 +118,14 @@ def payment_entry():
     )
 
 
+def test_stripe_minor_units_rounds_currency_instead_of_truncating(monkeypatch):
+    utils, fake_frappe, fake_stripe = load_utils(monkeypatch)
+
+    assert utils.to_stripe_minor_units(0.29) == 29
+    assert utils.to_stripe_minor_units(2.01) == 201
+    assert utils.to_stripe_minor_units(533.75) == 53375
+
+
 def test_paid_payment_request_update_syncs_pending_stripe_status(monkeypatch):
     utils, fake_frappe, fake_stripe = load_utils(monkeypatch, "paid", settings=None)
     doc = SimpleNamespace(
@@ -356,5 +364,91 @@ def test_submitted_unallocated_customer_payment_marks_matching_sales_order_reque
             "PAY-REQ-ELL",
             {"status": "Paid", "stripe_payment_status": "Paid"},
             False,
+        )
+    ]
+
+
+def test_submitted_payment_does_not_mark_ambiguous_project_matches_paid(monkeypatch):
+    utils, fake_frappe, fake_stripe = load_utils(monkeypatch, "paid", settings=None)
+    fake_frappe.db.reference_projects[("Sales Invoice", "SINV-0001")] = "GAR100326"
+    fake_frappe.db.project_payment_requests = [
+        SimpleNamespace(
+            name="PAY-REQ-SO-1",
+            status="Requested",
+            stripe_invoice_id=None,
+            stripe_payment_status="Pending",
+        ),
+        SimpleNamespace(
+            name="PAY-REQ-SO-2",
+            status="Requested",
+            stripe_invoice_id=None,
+            stripe_payment_status="Pending",
+        ),
+    ]
+    doc = SimpleNamespace(
+        name="ACC-PAY-AMBIGUOUS-PROJECT",
+        paid_amount=1595,
+        references=[
+            SimpleNamespace(
+                reference_doctype="Sales Invoice",
+                reference_name="SINV-0001",
+                allocated_amount=1595,
+            )
+        ],
+    )
+
+    utils.void_stripe_invoice_on_manual_payment(doc)
+
+    assert fake_frappe.db.values == []
+    assert fake_stripe.deleted == []
+    assert fake_stripe.voided == []
+    assert fake_frappe.errors == [
+        (
+            "Payment Entry ACC-PAY-AMBIGUOUS-PROJECT matched multiple Payment Requests "
+            "by project and amount; no request was marked paid automatically. "
+            "Candidates: PAY-REQ-SO-1, PAY-REQ-SO-2",
+            "Ambiguous Payment Request Match",
+        )
+    ]
+
+
+def test_submitted_payment_does_not_mark_ambiguous_unallocated_matches_paid(monkeypatch):
+    utils, fake_frappe, fake_stripe = load_utils(monkeypatch, "paid", settings=None)
+    fake_frappe.db.unallocated_payment_requests = [
+        SimpleNamespace(
+            name="PAY-REQ-CUSTOMER-1",
+            status="Requested",
+            stripe_invoice_id=None,
+            stripe_payment_status="Pending",
+        ),
+        SimpleNamespace(
+            name="PAY-REQ-CUSTOMER-2",
+            status="Requested",
+            stripe_invoice_id=None,
+            stripe_payment_status="Pending",
+        ),
+    ]
+    doc = SimpleNamespace(
+        name="ACC-PAY-AMBIGUOUS-CUSTOMER",
+        party_type="Customer",
+        party="Shared Customer",
+        paid_amount=1000,
+        total_allocated_amount=0,
+        unallocated_amount=1000,
+        posting_date="2026-08-04",
+        references=[],
+    )
+
+    utils.void_stripe_invoice_on_manual_payment(doc)
+
+    assert fake_frappe.db.values == []
+    assert fake_stripe.deleted == []
+    assert fake_stripe.voided == []
+    assert fake_frappe.errors == [
+        (
+            "Payment Entry ACC-PAY-AMBIGUOUS-CUSTOMER matched multiple Payment Requests "
+            "by customer and unallocated amount; no request was marked paid automatically. "
+            "Candidates: PAY-REQ-CUSTOMER-1, PAY-REQ-CUSTOMER-2",
+            "Ambiguous Payment Request Match",
         )
     ]

@@ -3,6 +3,8 @@ import sys
 import types
 from types import SimpleNamespace
 
+import pytest
+
 
 class FakeDB:
     def __init__(self, outstanding_amount=None):
@@ -236,3 +238,37 @@ def test_payment_intent_succeeded_creates_missing_entry_for_paid_request(monkeyp
 
     assert created == [("PAY-REQ-0001", "in_123", 0)]
     assert result["payment_entry"] == "ACC-PAY-0001"
+
+
+def test_payment_intent_failure_propagates_for_stripe_retry(monkeypatch):
+    webhook = load_webhook(monkeypatch)
+    webhook.frappe.db.payment_request_name = "PAY-REQ-0001"
+
+    class FakeInvoice:
+        @staticmethod
+        def retrieve(invoice_id):
+            return {
+                "id": invoice_id,
+                "payment_intent": "pi_123",
+                "amount_paid": 10000,
+                "currency": "usd",
+            }
+
+    monkeypatch.setitem(sys.modules, "stripe", SimpleNamespace(Invoice=FakeInvoice))
+    monkeypatch.setattr(
+        webhook,
+        "create_payment_entry",
+        lambda *args, **kwargs: (_ for _ in ()).throw(RuntimeError("accounting unavailable")),
+    )
+
+    with pytest.raises(RuntimeError, match="accounting unavailable"):
+        webhook.handle_payment_intent_succeeded(
+            {
+                "data": {
+                    "object": {
+                        "id": "pi_123",
+                        "invoice": "in_123",
+                    }
+                }
+            }
+        )

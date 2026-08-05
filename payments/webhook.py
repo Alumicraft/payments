@@ -14,7 +14,7 @@ ROUNDING_TOLERANCE = 0.01
 def handle_stripe_webhook():
     """
     Handle incoming Stripe webhook events.
-    
+
     This endpoint receives webhook events from Stripe and processes them accordingly.
     It verifies the webhook signature, checks for idempotency, and processes the event.
     
@@ -36,24 +36,23 @@ def handle_stripe_webhook():
         stripe.api_key = settings.get_password("api_key")
     except Exception as e:
         frappe.log_error(f"Failed to get Stripe settings: {str(e)}", "Stripe Webhook Error")
-        return {"status": "error", "message": "Configuration error"}
-    
-    # Verify webhook signature
-    event = None
-    if webhook_secret and sig_header:
-        try:
-            event = stripe.Webhook.construct_event(
-                payload, sig_header, webhook_secret
-            )
-        except stripe.error.SignatureVerificationError as e:
-            frappe.log_error(f"Webhook signature verification failed: {str(e)}", "Stripe Webhook Error")
-            frappe.throw(_("Invalid webhook signature"), frappe.AuthenticationError)
-    else:
-        # If no webhook secret configured, parse payload directly (not recommended for production)
-        try:
-            event = json.loads(payload)
-        except json.JSONDecodeError:
-            frappe.throw(_("Invalid JSON payload"), frappe.ValidationError)
+        raise
+
+    # Production webhooks must fail closed. This endpoint runs as Administrator
+    # after verification, so accepting unsigned JSON is never a safe fallback.
+    if not webhook_secret:
+        frappe.log_error("Stripe webhook secret is not configured", "Stripe Webhook Error")
+        frappe.throw(_("Stripe webhook is not configured"), frappe.AuthenticationError)
+
+    if not sig_header:
+        frappe.log_error("Stripe webhook signature is missing", "Stripe Webhook Error")
+        frappe.throw(_("Missing Stripe webhook signature"), frappe.AuthenticationError)
+
+    try:
+        event = stripe.Webhook.construct_event(payload, sig_header, webhook_secret)
+    except (stripe.error.SignatureVerificationError, ValueError) as e:
+        frappe.log_error(f"Webhook signature verification failed: {str(e)}", "Stripe Webhook Error")
+        frappe.throw(_("Invalid webhook signature"), frappe.AuthenticationError)
     
     # Run as Administrator after signature is verified
     frappe.set_user("Administrator")
@@ -90,12 +89,17 @@ def handle_stripe_webhook():
         frappe.db.commit()
         
         frappe.log_error(str(e), f"Webhook Error: {event_id}")
-        return {"status": "error", "event_id": event_id, "error": str(e)}
+        raise
 
 
 def is_event_processed(event_id):
-    """Check if a Stripe event has already been processed."""
-    return frappe.db.exists("Stripe Webhook Event", {"event_id": event_id})
+    """Skip successful events and events another request is currently processing."""
+    status = frappe.db.get_value(
+        "Stripe Webhook Event",
+        {"event_id": event_id},
+        "status",
+    )
+    return status in ("Processing", "Success")
 
 
 def record_webhook_event(event):
@@ -130,19 +134,33 @@ def record_webhook_event(event):
             "name"
         )
     
-    doc = frappe.get_doc({
-        "doctype": "Stripe Webhook Event",
-        "event_id": event_id,
+    values = {
         "event_type": event_type,
         "processed_at": now_datetime(),
-        "status": "Success",  # Will be updated if processing fails
+        "status": "Processing",
         "payment_request": payment_request,
         "stripe_invoice_id": invoice_id,
-        "amount": (amount / 100) if amount else 0,  # Convert from cents
+        "amount": (amount / 100) if amount else 0,
         "currency": currency.upper() if currency else "",
-        "raw_payload": json.dumps(event, indent=2)[:10000]  # Limit size
-    })
-    doc.insert(ignore_permissions=True)
+        "raw_payload": json.dumps(event, indent=2)[:10000],
+        "error_message": None,
+    }
+    existing_name = frappe.db.get_value(
+        "Stripe Webhook Event",
+        {"event_id": event_id},
+        "name",
+    )
+    if existing_name:
+        doc = frappe.get_doc("Stripe Webhook Event", existing_name)
+        doc.update(values)
+        doc.save(ignore_permissions=True)
+    else:
+        doc = frappe.get_doc({
+            "doctype": "Stripe Webhook Event",
+            "event_id": event_id,
+            **values,
+        })
+        doc.insert(ignore_permissions=True)
     frappe.db.commit()
     
     return doc
@@ -273,10 +291,7 @@ def handle_invoice_paid(event):
             f"Failed to create Payment Entry for {payment_request_name}: {str(e)}",
             "Stripe Webhook Error"
         )
-        return {
-            "message": f"Status updated but Payment Entry creation failed: {str(e)}",
-            "payment_request": payment_request_name
-        }
+        raise
 
 
 def handle_invoice_payment_failed(event):
@@ -453,7 +468,7 @@ def handle_payment_intent_succeeded(event):
             f"Backup payment processing failed for {payment_request_name}: {str(e)}",
             "Stripe Webhook Error"
         )
-        return {"message": f"Status updated but Payment Entry creation failed: {str(e)}"}
+        raise
 
 
 def get_payment_intent_invoice_id(payment_intent):
