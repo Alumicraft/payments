@@ -1,9 +1,9 @@
 from erpnext.projects.doctype.project.project_dashboard import get_data as get_standard_data
 
 
-def get_data():
+def get_data(data=None):
     """Preserve ERPNext's Project dashboard and expose linked Payment Requests."""
-    data = get_standard_data()
+    data = data if data is not None else get_standard_data()
     transactions = data.setdefault("transactions", [])
 
     sales_group = next(
