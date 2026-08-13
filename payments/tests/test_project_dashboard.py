@@ -35,6 +35,33 @@ def test_project_dashboard_preserves_standard_links_and_adds_payment_requests(mo
     ]
 
 
+def test_project_dashboard_extends_frappe_v16_data_payload(monkeypatch):
+    standard_module = types.ModuleType("erpnext.projects.doctype.project.project_dashboard")
+    standard_module.get_data = lambda: (_ for _ in ()).throw(
+        AssertionError("standard dashboard should not be loaded twice")
+    )
+    monkeypatch.setitem(
+        sys.modules,
+        "erpnext.projects.doctype.project.project_dashboard",
+        standard_module,
+    )
+    sys.modules.pop("payments.dashboard.project", None)
+
+    dashboard = importlib.import_module("payments.dashboard.project")
+    existing = {
+        "fieldname": "project",
+        "transactions": [
+            {"label": "Sales", "items": ["Sales Order"]},
+        ],
+    }
+
+    assert dashboard.get_data(data=existing) is existing
+    assert existing["transactions"][0]["items"] == [
+        "Sales Order",
+        "Payment Request",
+    ]
+
+
 def test_project_dashboard_does_not_duplicate_payment_request(monkeypatch):
     standard_module = types.ModuleType("erpnext.projects.doctype.project.project_dashboard")
     standard_module.get_data = lambda: {
