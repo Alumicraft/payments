@@ -168,6 +168,11 @@ def reassign_sales_order_advances(
 
     if cancel_source_orders:
         for source in sources:
+            # Payment Entry cancellation/submission updates the linked Sales
+            # Order's modified timestamp. Reload before cancellation so Frappe's
+            # optimistic-lock check sees the current document.
+            source = frappe.get_doc("Sales Order", source.name)
+            _validate_source_order(source, project, target.customer)
             source.flags.ignore_permissions = True
             source.flags.ignore_links = True
             source.cancel()
