@@ -702,11 +702,28 @@ def void_stripe_invoice_on_manual_payment(doc, method=None):
 
     # Check each reference in the Payment Entry for linked Payment Requests
     for ref in payment_entry_references:
-        for pr in get_exact_reference_payment_requests(ref):
+        linked_payment_request = getattr(ref, "payment_request", None)
+        if linked_payment_request:
+            for pr in get_linked_payment_requests(linked_payment_request):
+                if mark_payment_request_paid_after_payment_entry(pr, doc.name, synced_payment_requests):
+                    synced_payment_requests.add(pr.name)
+            # ERPNext's explicit Payment Entry Reference link is authoritative.
+            # Never fall through to heuristic matching when that link is present.
+            continue
+
+        reference_amount = get_payment_entry_reference_amount(ref, doc)
+        exact_matches = require_unambiguous_fallback_match(
+            get_exact_reference_payment_requests(ref, reference_amount),
+            "reference and amount",
+            doc.name,
+        )
+        for pr in exact_matches:
             if mark_payment_request_paid_after_payment_entry(pr, doc.name, synced_payment_requests):
                 synced_payment_requests.add(pr.name)
 
-        reference_amount = get_payment_entry_reference_amount(ref, doc)
+        if exact_matches:
+            continue
+
         reference_project = get_payment_entry_reference_project(ref)
         project_matches = require_unambiguous_fallback_match(
             get_project_amount_payment_requests(reference_project, reference_amount),
@@ -745,16 +762,41 @@ def require_unambiguous_fallback_match(payment_requests, match_type, payment_ent
     return []
 
 
-def get_exact_reference_payment_requests(ref):
+def get_linked_payment_requests(payment_request_name):
     return frappe.get_all(
+        "Payment Request",
+        filters={
+            "name": payment_request_name,
+            "docstatus": 1,
+        },
+        fields=["name", "status", "stripe_invoice_id", "stripe_payment_status"],
+    )
+
+
+def get_exact_reference_payment_requests(ref, amount):
+    if not amount:
+        return []
+
+    candidates = frappe.get_all(
         "Payment Request",
         filters={
             "reference_doctype": ref.reference_doctype,
             "reference_name": ref.reference_name,
             "docstatus": 1,
         },
-        fields=["name", "status", "stripe_invoice_id", "stripe_payment_status"],
+        fields=[
+            "name",
+            "status",
+            "grand_total",
+            "stripe_invoice_id",
+            "stripe_payment_status",
+        ],
     )
+    return [
+        pr for pr in candidates
+        if abs(to_currency_float(getattr(pr, "grand_total", None)) - amount)
+        <= PAYMENT_REQUEST_AMOUNT_TOLERANCE
+    ]
 
 
 def get_payment_entry_reference_amount(ref, doc):
