@@ -50,7 +50,8 @@ override_doctype_dashboards = {
 
 # Include JS in doctype views
 doctype_js = {
-    "Payment Request": "public/js/payment_request.js"
+    "Payment Request": "public/js/payment_request.js",
+    "Project": "public/js/project.js",
 }
 
 # Include CSS
