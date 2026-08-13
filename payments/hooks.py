@@ -39,8 +39,13 @@ doc_events = {
         "on_cancel": "payments.utils.void_stripe_invoice_on_cancel"
     },
     "Payment Entry": {
-        "on_submit": "payments.utils.void_stripe_invoice_on_manual_payment"
+        "on_submit": "payments.utils.void_stripe_invoice_on_manual_payment",
+        "on_update_after_submit": "payments.utils.void_stripe_invoice_on_manual_payment",
     }
+}
+
+override_doctype_dashboards = {
+    "Project": "payments.dashboard.project.get_data",
 }
 
 # Include JS in doctype views

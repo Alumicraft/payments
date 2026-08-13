@@ -659,7 +659,8 @@ def create_payment_entry(payment_request, invoice, stripe_fee=0):
             pe.append("references", {
                 "reference_doctype": payment_request.reference_doctype,
                 "reference_name": payment_request.reference_name,
-                "allocated_amount": amount_paid
+                "allocated_amount": amount_paid,
+                "payment_request": payment_request.name,
             })
         
         pe.insert(ignore_permissions=True)

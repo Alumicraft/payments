@@ -50,6 +50,11 @@ class FakeFrappe(types.ModuleType):
 
     def get_all(self, doctype, filters=None, fields=None):
         assert doctype == "Payment Request"
+        if filters and filters.get("name"):
+            return [
+                row for row in self.payment_requests
+                if row.name == filters["name"]
+            ]
         return self.payment_requests
 
     def msgprint(self, message, **kwargs):
@@ -108,11 +113,12 @@ def load_utils(monkeypatch, invoice_status="paid", settings=None):
 def payment_entry():
     return SimpleNamespace(
         name="ACC-PAY-2026-00001",
-        paid_amount=0,
+        paid_amount=500,
         references=[
             SimpleNamespace(
                 reference_doctype="Sales Invoice",
                 reference_name="SINV-0001",
+                allocated_amount=500,
             )
         ],
     )
@@ -203,7 +209,7 @@ def test_submitted_payment_entry_marks_request_paid_when_stripe_invoice_already_
     settings = SimpleNamespace(get_password=lambda fieldname: "sk_test")
     utils, fake_frappe, fake_stripe = load_utils(monkeypatch, "paid", settings)
     fake_frappe.payment_requests = [
-        SimpleNamespace(name="PAY-REQ-0001", stripe_invoice_id="in_123")
+        SimpleNamespace(name="PAY-REQ-0001", grand_total=500, stripe_invoice_id="in_123")
     ]
 
     utils.void_stripe_invoice_on_manual_payment(payment_entry())
@@ -225,6 +231,7 @@ def test_submitted_payment_entry_marks_na_request_paid_without_stripe_invoice(mo
     fake_frappe.payment_requests = [
         SimpleNamespace(
             name="PAY-REQ-0004",
+            grand_total=500,
             stripe_invoice_id=None,
             stripe_payment_status="N/A",
         )
@@ -248,7 +255,7 @@ def test_submitted_payment_entry_marks_request_paid_after_voiding_open_invoice(m
     settings = SimpleNamespace(get_password=lambda fieldname: "sk_test")
     utils, fake_frappe, fake_stripe = load_utils(monkeypatch, "open", settings)
     fake_frappe.payment_requests = [
-        SimpleNamespace(name="PAY-REQ-0002", stripe_invoice_id="in_456")
+        SimpleNamespace(name="PAY-REQ-0002", grand_total=500, stripe_invoice_id="in_456")
     ]
 
     utils.void_stripe_invoice_on_manual_payment(payment_entry())
@@ -267,7 +274,7 @@ def test_submitted_payment_entry_marks_request_paid_after_voiding_open_invoice(m
 def test_submitted_payment_entry_marks_request_paid_without_stripe_settings(monkeypatch):
     utils, fake_frappe, fake_stripe = load_utils(monkeypatch, "open", settings=None)
     fake_frappe.payment_requests = [
-        SimpleNamespace(name="PAY-REQ-0003", stripe_invoice_id="in_789")
+        SimpleNamespace(name="PAY-REQ-0003", grand_total=500, stripe_invoice_id="in_789")
     ]
 
     utils.void_stripe_invoice_on_manual_payment(payment_entry())
@@ -279,6 +286,81 @@ def test_submitted_payment_entry_marks_request_paid_without_stripe_settings(monk
             "PAY-REQ-0003",
             {"status": "Paid", "stripe_payment_status": "Paid"},
             False,
+        )
+    ]
+
+
+def test_payment_entry_reference_uses_explicit_payment_request_link(monkeypatch):
+    utils, fake_frappe, fake_stripe = load_utils(monkeypatch, "paid", settings=None)
+    fake_frappe.payment_requests = [
+        SimpleNamespace(
+            name="PAY-REQ-ORIGIN",
+            grand_total=500,
+            status="Requested",
+            stripe_invoice_id=None,
+            stripe_payment_status="Pending",
+        ),
+        SimpleNamespace(
+            name="PAY-REQ-SAME-INVOICE",
+            grand_total=500,
+            status="Requested",
+            stripe_invoice_id=None,
+            stripe_payment_status="Pending",
+        ),
+    ]
+    doc = SimpleNamespace(
+        name="ACC-PAY-DIRECT",
+        paid_amount=500,
+        references=[
+            SimpleNamespace(
+                reference_doctype="Sales Invoice",
+                reference_name="SINV-0001",
+                allocated_amount=500,
+                payment_request="PAY-REQ-ORIGIN",
+            )
+        ],
+    )
+
+    utils.void_stripe_invoice_on_manual_payment(doc)
+
+    assert fake_frappe.db.values == [
+        (
+            "Payment Request",
+            "PAY-REQ-ORIGIN",
+            {"status": "Paid", "stripe_payment_status": "Paid"},
+            False,
+        )
+    ]
+
+
+def test_payment_entry_does_not_mark_ambiguous_reference_amount_matches(monkeypatch):
+    utils, fake_frappe, fake_stripe = load_utils(monkeypatch, "paid", settings=None)
+    fake_frappe.payment_requests = [
+        SimpleNamespace(
+            name="PAY-REQ-REF-1",
+            grand_total=500,
+            status="Requested",
+            stripe_invoice_id=None,
+            stripe_payment_status="Pending",
+        ),
+        SimpleNamespace(
+            name="PAY-REQ-REF-2",
+            grand_total=500,
+            status="Requested",
+            stripe_invoice_id=None,
+            stripe_payment_status="Pending",
+        ),
+    ]
+
+    utils.void_stripe_invoice_on_manual_payment(payment_entry())
+
+    assert fake_frappe.db.values == []
+    assert fake_frappe.errors == [
+        (
+            "Payment Entry ACC-PAY-2026-00001 matched multiple Payment Requests "
+            "by reference and amount; no request was marked paid automatically. "
+            "Candidates: PAY-REQ-REF-1, PAY-REQ-REF-2",
+            "Ambiguous Payment Request Match",
         )
     ]
 
