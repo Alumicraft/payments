@@ -100,6 +100,39 @@ frappe.ui.form.on('Payment Request', {
             }, __('Stripe'));
         }
 
+        if (
+            frm.doc.docstatus === 1 &&
+            frm.doc.status !== 'Paid' &&
+            !frm.doc.stripe_invoice_id &&
+            !frm.doc.stripe_invoice_url &&
+            frappe.user.has_role('System Manager')
+        ) {
+            frm.add_custom_button(__('Create Missing Invoice'), function () {
+                frappe.confirm(
+                    __('Create the missing Stripe invoice for this payment request? This does not send an email.'),
+                    function () {
+                        frappe.call({
+                            method: 'payments.utils.retry_missing_stripe_invoice',
+                            args: {
+                                payment_request_name: frm.doc.name
+                            },
+                            freeze: true,
+                            freeze_message: __('Creating Stripe invoice...'),
+                            callback: function (r) {
+                                if (r.message && r.message.success) {
+                                    frappe.show_alert({
+                                        message: __('Stripe invoice created successfully!'),
+                                        indicator: 'green'
+                                    });
+                                    frm.reload_doc();
+                                }
+                            }
+                        });
+                    }
+                );
+            }, __('Stripe'));
+        }
+
         // Update payment status indicator
         update_status_indicator(frm);
 

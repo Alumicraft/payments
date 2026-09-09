@@ -5,6 +5,7 @@ import frappe
 from frappe import _
 from frappe.utils import now_datetime, get_datetime, time_diff_in_seconds
 import json
+import re
 
 
 # Rate limiting: Minimum seconds between invoice creation attempts
@@ -402,25 +403,63 @@ def get_customer_country(customer):
     """Get customer's country from primary address."""
     if not customer:
         return "US"
-    
-    # Try to get primary billing address
-    address = frappe.db.get_value(
-        "Dynamic Link",
-        {"link_doctype": "Customer", "link_name": customer.name, "parenttype": "Address"},
-        "parent"
+
+    addresses = frappe.db.sql(
+        """
+        SELECT a.country, a.state, a.pincode
+        FROM `tabAddress` a
+        INNER JOIN `tabDynamic Link` dl
+            ON dl.parent = a.name
+            AND dl.parenttype = 'Address'
+        WHERE dl.link_doctype = 'Customer'
+            AND dl.link_name = %(customer)s
+            AND COALESCE(a.disabled, 0) = 0
+        ORDER BY
+            COALESCE(a.is_primary_address, 0) DESC,
+            CASE WHEN a.address_type = 'Billing' THEN 0 ELSE 1 END,
+            a.modified DESC
+        LIMIT 1
+        """,
+        {"customer": customer.name},
+        as_dict=True,
     )
-    
-    if address:
-        country = frappe.db.get_value("Address", address, "country")
-        if country and frappe.db.exists("Country", country):
+
+    if addresses:
+        address = addresses[0]
+        country = normalize_customer_country(address.country, address.state, address.pincode)
+        if country:
             return country
-        return "US"
 
     # Fall back to territory — check if it's a valid country name
     if customer.territory and frappe.db.exists("Country", customer.territory):
         return customer.territory
 
     return "US"
+
+
+def normalize_customer_country(country, state=None, pincode=None):
+    """Repair placeholder country values only when state and ZIP prove a U.S. address."""
+    country_text = str(country or "").strip()
+    normalized_country = country_text.upper().replace(".", "")
+    if normalized_country in {"US", "USA", "UNITED STATES", "UNITED STATES OF AMERICA"}:
+        return "United States"
+
+    if normalized_country not in {"", "NA", "N/A", "NONE", "NULL"}:
+        return country_text
+
+    state_code = str(state or "").strip().upper()
+    postal_code = str(pincode or "").strip()
+    us_state_codes = {
+        "AK", "AL", "AR", "AS", "AZ", "CA", "CO", "CT", "DC", "DE", "FL", "GA", "GU",
+        "HI", "IA", "ID", "IL", "IN", "KS", "KY", "LA", "MA", "MD", "ME", "MI", "MN",
+        "MO", "MP", "MS", "MT", "NC", "ND", "NE", "NH", "NJ", "NM", "NV", "NY", "OH",
+        "OK", "OR", "PA", "PR", "RI", "SC", "SD", "TN", "TX", "UM", "UT", "VA", "VI",
+        "VT", "WA", "WI", "WV", "WY",
+    }
+    if state_code in us_state_codes and re.fullmatch(r"\d{5}(?:-\d{4})?", postal_code):
+        return "United States"
+
+    return None
 
 
 def get_due_date_timestamp(doc):
@@ -566,6 +605,37 @@ def regenerate_stripe_invoice(payment_request_name):
     except stripe.error.StripeError as e:
         frappe.log_error(f"Error regenerating invoice: {str(e)}", "Stripe Integration Error")
         frappe.throw(_("Failed to regenerate invoice: {0}").format(str(e)))
+
+
+@frappe.whitelist()
+def retry_missing_stripe_invoice(payment_request_name):
+    """Create the missing Stripe invoice for one submitted, unpaid Payment Request."""
+    frappe.only_for("System Manager")
+    doc = frappe.get_doc("Payment Request", payment_request_name)
+    doc.check_permission("write")
+
+    if doc.docstatus != 1:
+        frappe.throw(_("Payment Request must be submitted before creating a Stripe invoice"))
+    if doc.status == "Paid":
+        frappe.throw(_("Cannot create a Stripe invoice for a paid Payment Request"))
+    if doc.stripe_invoice_id or doc.stripe_invoice_url:
+        frappe.throw(_("A Stripe invoice already exists for this Payment Request"))
+
+    settings = get_stripe_settings()
+    if not settings or not settings.enable_automatic_checkout:
+        frappe.throw(_("Automatic Stripe checkout is not enabled"))
+
+    create_stripe_invoice(doc)
+    doc.reload()
+    if not doc.stripe_invoice_id or not doc.stripe_invoice_url:
+        frappe.throw(_("Stripe invoice was not created. Verify the customer billing country and try again."))
+
+    return {
+        "success": True,
+        "invoice_url": doc.stripe_invoice_url,
+        "invoice_id": doc.stripe_invoice_id,
+        "status": doc.stripe_payment_status,
+    }
 
 
 @frappe.whitelist()
